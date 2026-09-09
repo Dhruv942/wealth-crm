@@ -9,12 +9,85 @@ import TaskAllocationDesk from './components/TaskAllocationDesk';
 import RMCopilotDossier from './components/RMCopilotDossier';
 import AutoCRMUpdate from './components/AutoCRMUpdate';
 import PartnerOversight from './components/PartnerOversight';
-import { INITIAL_TASKS, CLIENT_PROFILES, TEAM_MEMBERS, HOUSE_VIEWS } from './mockData/wealthData';
+import {
+  CLIENT_PROFILES as LOCAL_CLIENT_PROFILES,
+  DEMO_CALL_SCENARIOS as LOCAL_DEMO_CALL_SCENARIOS,
+  FIRM_METRICS as LOCAL_FIRM_METRICS,
+  HOUSE_VIEWS as LOCAL_HOUSE_VIEWS,
+  INITIAL_TASKS as LOCAL_INITIAL_TASKS,
+  PLAYBOOK_LIBRARY as LOCAL_PLAYBOOK_LIBRARY,
+  TEAM_MEMBERS as LOCAL_TEAM_MEMBERS
+} from './mockData/wealthData';
+import {
+  assignTask,
+  fetchBootstrap,
+  loginDemoRole,
+  updateTaskStatus
+} from './services/api';
+
+const toRoleId = (user) => {
+  if (!user) return 'rm-1';
+  if (user.role === 'MANAGER') return 'rm-3';
+  if (user.role === 'OPS') return 'ops-1';
+  return user.id;
+};
+
+const mergeById = (fallback, incoming = []) => {
+  const incomingById = new Map(incoming.map(item => [item.id, item]));
+  const merged = fallback.map(item => ({ ...item, ...(incomingById.get(item.id) || {}) }));
+  incoming.forEach(item => {
+    if (!fallback.some(existing => existing.id === item.id)) merged.push(item);
+  });
+  return merged;
+};
+
+const enrichClients = (incoming = []) => {
+  if (incoming.length === 0) return LOCAL_CLIENT_PROFILES;
+  const incomingById = new Map(incoming.map(item => [item.id, item]));
+  return incoming.map(client => {
+    const fallback = LOCAL_CLIENT_PROFILES.find(item => item.id === client.id) || {};
+    return {
+      ...fallback,
+      ...client,
+      assignedRMId: client.assignedRMId || client.assignedRmId || fallback.assignedRMId
+    };
+  });
+};
+
+const normalizeAuditLog = (log) => {
+  const client = LOCAL_CLIENT_PROFILES.find(c => c.id === log.clientId);
+  const actor = LOCAL_TEAM_MEMBERS.find(m => m.id === log.actorUserId);
+  return {
+    timestamp: log.timestamp || (log.createdAt ? new Date(log.createdAt).toLocaleString('en-IN', {
+      timeZone: 'Asia/Kolkata',
+      day: '2-digit',
+      month: '2-digit',
+      year: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    }).replace(',', '') + ' IST' : 'Live'),
+    event: log.event || 'Activity',
+    client: log.client || client?.name || log.clientId || 'Internal Desk',
+    advisor: log.advisor || actor?.name || log.actorUserId || 'System',
+    detail: log.detail || '',
+    complianceStatus: log.complianceStatus || log.compliance_status || 'ok'
+  };
+};
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('allocation');
-  const [tasks, setTasks] = useState(INITIAL_TASKS);
-  const [currentRM, setCurrentRM] = useState(TEAM_MEMBERS[0]); // Defaults to Rahul Sharma (RM)
+  const [tasks, setTasks] = useState(LOCAL_INITIAL_TASKS);
+  const [teamMembers, setTeamMembers] = useState(LOCAL_TEAM_MEMBERS);
+  const [clientProfiles, setClientProfiles] = useState(LOCAL_CLIENT_PROFILES);
+  const [demoCallScenarios, setDemoCallScenarios] = useState(LOCAL_DEMO_CALL_SCENARIOS);
+  const [firmMetrics, setFirmMetrics] = useState(LOCAL_FIRM_METRICS);
+  const [houseViews, setHouseViews] = useState(LOCAL_HOUSE_VIEWS);
+  const [playbookLibrary, setPlaybookLibrary] = useState(LOCAL_PLAYBOOK_LIBRARY);
+  const [auditLogs, setAuditLogs] = useState([]);
+  const [apiToken, setApiToken] = useState(null);
+  const [apiStatus, setApiStatus] = useState('connecting');
+  const [currentRM, setCurrentRM] = useState(LOCAL_TEAM_MEMBERS[0]); // Defaults to Rahul Sharma (RM)
   const [selectedClientId, setSelectedClientId] = useState('cli-1');
   const [toastMessage, setToastMessage] = useState(null);
   const [currentTime, setCurrentTime] = useState('');
@@ -27,10 +100,39 @@ export default function App() {
 
   const isManagerOrOps = currentRM.level === 'Manager' || currentRM.level === 'Operations';
 
+  const applyBootstrap = (bootstrap, roleId) => {
+    const nextTeamMembers = mergeById(LOCAL_TEAM_MEMBERS, bootstrap.teamMembers || []);
+    const nextClients = enrichClients(bootstrap.clientProfiles || []);
+    setTeamMembers(nextTeamMembers);
+    setClientProfiles(nextClients);
+    setTasks(bootstrap.tasks || LOCAL_INITIAL_TASKS);
+    setDemoCallScenarios(bootstrap.demoCallScenarios || LOCAL_DEMO_CALL_SCENARIOS);
+    setFirmMetrics(bootstrap.firmMetrics || LOCAL_FIRM_METRICS);
+    setHouseViews(bootstrap.houseViews || LOCAL_HOUSE_VIEWS);
+    setPlaybookLibrary(bootstrap.playbookLibrary || LOCAL_PLAYBOOK_LIBRARY);
+    setAuditLogs((bootstrap.auditLogs || []).map(normalizeAuditLog));
+    setCurrentRM(nextTeamMembers.find(m => m.id === roleId) || LOCAL_TEAM_MEMBERS.find(m => m.id === roleId) || nextTeamMembers[0]);
+  };
+
+  const loadBackendForRole = async (roleId, { silent = false } = {}) => {
+    try {
+      setApiStatus('connecting');
+      const login = await loginDemoRole(roleId);
+      const bootstrap = await fetchBootstrap(login.accessToken);
+      setApiToken(login.accessToken);
+      applyBootstrap(bootstrap, toRoleId(login.user));
+      setApiStatus('connected');
+      if (!silent) showToast(`Backend connected as ${login.user.name}`);
+    } catch (error) {
+      setApiStatus('offline');
+      if (!silent) showToast(`Backend unavailable, using local demo data. ${error.message}`);
+    }
+  };
+
   // Scope for nudges & search — same isolation rule used everywhere else in the app
   const accessibleClients = isManagerOrOps
-    ? CLIENT_PROFILES
-    : CLIENT_PROFILES.filter(c => c.assignedRMId === currentRM.id);
+    ? clientProfiles
+    : clientProfiles.filter(c => c.assignedRMId === currentRM.id);
   const accessibleTasks = isManagerOrOps
     ? tasks
     : tasks.filter(t => t.assignedTo === currentRM.id || t.assignedTo === 'ops-1');
@@ -57,6 +159,10 @@ export default function App() {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  useEffect(() => {
+    loadBackendForRole('rm-1', { silent: true });
   }, []);
 
   const paletteClientResults = paletteQuery
@@ -102,12 +208,13 @@ export default function App() {
 
   // When changing role persona, ensure selected client is one of their assigned clients
   const handleSwitchRM = (rmId) => {
-    const found = TEAM_MEMBERS.find(m => m.id === rmId);
+    const found = teamMembers.find(m => m.id === rmId) || LOCAL_TEAM_MEMBERS.find(m => m.id === rmId);
     if (found) {
       setCurrentRM(found);
+      loadBackendForRole(rmId, { silent: true });
       const isManager = found.level === 'Manager' || found.level === 'Operations';
       if (!isManager) {
-        const theirClients = CLIENT_PROFILES.filter(c => c.assignedRMId === found.id);
+        const theirClients = clientProfiles.filter(c => c.assignedRMId === found.id);
         if (theirClients.length > 0) {
           setSelectedClientId(theirClients[0].id);
         }
@@ -126,17 +233,27 @@ export default function App() {
     }, 3500);
   };
 
-  const handleUpdateTaskStatus = (taskId, nextStatus) => {
+  const refreshCurrentRole = () => loadBackendForRole(currentRM.id, { silent: true });
+
+  const handleUpdateTaskStatus = async (taskId, nextStatus) => {
     setTasks(prev => prev.map(t => {
       if (t.id === taskId) {
         return { ...t, status: nextStatus };
       }
       return t;
     }));
+    if (apiToken) {
+      try {
+        await updateTaskStatus(apiToken, taskId, nextStatus);
+        await refreshCurrentRole();
+      } catch (error) {
+        showToast(`Backend task update failed: ${error.message}`);
+      }
+    }
     showToast(`Task status advanced to "${nextStatus.replace('_', ' ')}"!`);
   };
 
-  const handleReassignTask = (taskId, newAssigneeId, newAssigneeName) => {
+  const handleReassignTask = async (taskId, newAssigneeId, newAssigneeName) => {
     setTasks(prev => prev.map(t => {
       if (t.id === taskId) {
         return { 
@@ -148,6 +265,14 @@ export default function App() {
       }
       return t;
     }));
+    if (apiToken) {
+      try {
+        await assignTask(apiToken, taskId, newAssigneeId);
+        await refreshCurrentRole();
+      } catch (error) {
+        showToast(`Backend reassignment failed: ${error.message}`);
+      }
+    }
     showToast(`Task successfully reallocated to ${newAssigneeName}!`);
   };
 
@@ -334,6 +459,9 @@ export default function App() {
         {activeTab === 'allocation' && (
           <TaskAllocationDesk
             tasks={tasks}
+            teamMembers={teamMembers}
+            clientProfiles={clientProfiles}
+            firmMetrics={firmMetrics}
             currentRM={currentRM}
             onUpdateTaskStatus={handleUpdateTaskStatus}
             onReassignTask={handleReassignTask}
@@ -345,6 +473,8 @@ export default function App() {
         {activeTab === 'copilot' && (
           <RMCopilotDossier
             currentRM={currentRM}
+            clientProfiles={clientProfiles}
+            firmMetrics={firmMetrics}
             selectedClientId={selectedClientId}
             onSelectClient={setSelectedClientId}
             onNavigateToAutoCRM={(clientId) => {
@@ -357,6 +487,11 @@ export default function App() {
         {activeTab === 'autocrm' && (
           <AutoCRMUpdate
             currentRM={currentRM}
+            clientProfiles={clientProfiles}
+            demoCallScenarios={demoCallScenarios}
+            playbookLibrary={playbookLibrary}
+            apiToken={apiToken}
+            onBackendRefresh={refreshCurrentRole}
             selectedClientId={selectedClientId}
             onSelectClient={setSelectedClientId}
             onTasksGenerated={handleTasksGenerated}
@@ -367,6 +502,11 @@ export default function App() {
         {activeTab === 'oversight' && isManagerOrOps && (
           <PartnerOversight 
             tasks={tasks}
+            teamMembers={teamMembers}
+            clientProfiles={clientProfiles}
+            demoCallScenarios={demoCallScenarios}
+            firmMetrics={firmMetrics}
+            auditLogs={auditLogs}
           />
         )}
       </main>
@@ -415,7 +555,7 @@ export default function App() {
               </div>
             </div>
             <div className="flex-1 overflow-y-auto p-3 space-y-2">
-              {HOUSE_VIEWS
+              {houseViews
                 .filter(hv =>
                   houseViewQuery === '' ||
                   hv.title.toLowerCase().includes(houseViewQuery.toLowerCase()) ||
@@ -442,7 +582,7 @@ export default function App() {
                     )}
                   </div>
                 ))}
-              {HOUSE_VIEWS.filter(hv =>
+              {houseViews.filter(hv =>
                 houseViewQuery === '' ||
                 hv.title.toLowerCase().includes(houseViewQuery.toLowerCase()) ||
                 hv.tags.some(t => t.toLowerCase().includes(houseViewQuery.toLowerCase()))

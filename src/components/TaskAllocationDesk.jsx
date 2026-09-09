@@ -4,12 +4,15 @@ import {
   Filter, Plus, RefreshCw, ChevronRight, Layers, ExternalLink,
   ShieldAlert, Sparkles, Building, ArrowUpRight, Lock, Send
 } from 'lucide-react';
-import { TEAM_MEMBERS, FIRM_METRICS, CLIENT_PROFILES } from '../mockData/wealthData';
+import { TEAM_MEMBERS as LOCAL_TEAM_MEMBERS, FIRM_METRICS as LOCAL_FIRM_METRICS, CLIENT_PROFILES as LOCAL_CLIENT_PROFILES } from '../mockData/wealthData';
 
 const ALERT_SEVERITY_RANK = { critical: 4, warning: 3, opportunity: 2, info: 1 };
 
 export default function TaskAllocationDesk({ 
   tasks, 
+  teamMembers = LOCAL_TEAM_MEMBERS,
+  clientProfiles = LOCAL_CLIENT_PROFILES,
+  firmMetrics = LOCAL_FIRM_METRICS,
   currentRM,
   onUpdateTaskStatus, 
   onReassignTask, 
@@ -39,8 +42,8 @@ export default function TaskAllocationDesk({
   // Next Best Action: rank accessible clients by their most severe open alert,
   // so the RM/manager sees who to call today instead of opening each dossier one by one
   const nbaAccessibleClients = isManagerOrOps
-    ? CLIENT_PROFILES
-    : CLIENT_PROFILES.filter(c => c.assignedRMId === currentRM.id);
+    ? clientProfiles
+    : clientProfiles.filter(c => c.assignedRMId === currentRM.id);
 
   const nextBestActions = nbaAccessibleClients
     .map(c => {
@@ -111,8 +114,8 @@ export default function TaskAllocationDesk({
                 <Building className="w-4 h-4 text-cyan-400" />
               </div>
               <div className="mt-2">
-                <span className="text-2xl font-bold text-white tracking-tight">{FIRM_METRICS.totalAUM}</span>
-                <span className="text-xs text-emerald-400 ml-2 font-medium">96 HNWI Accounts</span>
+                <span className="text-2xl font-bold text-white tracking-tight">{firmMetrics.totalAUM}</span>
+                <span className="text-xs text-emerald-400 ml-2 font-medium">{firmMetrics.activeClients} HNWI Accounts</span>
               </div>
             </div>
 
@@ -122,8 +125,8 @@ export default function TaskAllocationDesk({
                 <Clock className="w-4 h-4 text-amber-400" />
               </div>
               <div className="mt-2 flex items-baseline gap-2">
-                <span className="text-2xl font-bold text-amber-400 tracking-tight">{FIRM_METRICS.tasksDueToday}</span>
-                <span className="text-xs text-rose-400 font-semibold">({FIRM_METRICS.nearBreachSLAs} Near Breach)</span>
+                <span className="text-2xl font-bold text-amber-400 tracking-tight">{firmMetrics.tasksDueToday}</span>
+                <span className="text-xs text-rose-400 font-semibold">({firmMetrics.nearBreachSLAs} Near Breach)</span>
               </div>
             </div>
           </>
@@ -162,7 +165,7 @@ export default function TaskAllocationDesk({
           </div>
           <div className="mt-2">
             <span className="text-2xl font-bold text-emerald-400 tracking-tight">
-              {isManagerOrOps ? FIRM_METRICS.unallocatedCashAcrossClients : '₹45.0 Lakhs'}
+              {isManagerOrOps ? firmMetrics.unallocatedCashAcrossClients : '₹45.0 Lakhs'}
             </span>
             <span className="text-xs text-slate-400 ml-2">Arbitrage Harvest Ready</span>
           </div>
@@ -245,7 +248,7 @@ export default function TaskAllocationDesk({
                 >
                   All Team ({tasks.length})
                 </button>
-                {TEAM_MEMBERS.map(member => (
+                {teamMembers.map(member => (
                   <button
                     key={member.id}
                     onClick={() => setSelectedRM(member.id)}
@@ -475,7 +478,7 @@ export default function TaskAllocationDesk({
                 Reallocate to Advisor or Central Ops:
               </label>
               <div className="space-y-2">
-                {TEAM_MEMBERS.map(member => (
+                {teamMembers.map(member => (
                   <button
                     key={member.id}
                     onClick={() => {

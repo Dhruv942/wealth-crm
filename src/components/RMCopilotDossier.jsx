@@ -5,10 +5,12 @@ import {
   ChevronUp, PieChart, ArrowUpRight, Clock, User, Landmark,
   FileText, Shield, DollarSign, Lock, Gift, CalendarClock
 } from 'lucide-react';
-import { CLIENT_PROFILES, FIRM_METRICS } from '../mockData/wealthData';
+import { CLIENT_PROFILES as LOCAL_CLIENT_PROFILES, FIRM_METRICS as LOCAL_FIRM_METRICS } from '../mockData/wealthData';
 
 export default function RMCopilotDossier({ 
   currentRM,
+  clientProfiles = LOCAL_CLIENT_PROFILES,
+  firmMetrics = LOCAL_FIRM_METRICS,
   selectedClientId, 
   onSelectClient, 
   onNavigateToAutoCRM 
@@ -21,11 +23,11 @@ export default function RMCopilotDossier({
   // Strict client book isolation:
   // Junior RMs only see clients assigned to them
   const accessibleClients = isPartnerOrOps 
-    ? CLIENT_PROFILES 
-    : CLIENT_PROFILES.filter(c => c.assignedRMId === currentRM.id);
+    ? clientProfiles 
+    : clientProfiles.filter(c => c.assignedRMId === currentRM.id);
 
   // If current selection is not accessible by this RM, fallback to first accessible client
-  const client = accessibleClients.find(c => c.id === selectedClientId) || accessibleClients[0] || CLIENT_PROFILES[0];
+  const client = accessibleClients.find(c => c.id === selectedClientId) || accessibleClients[0] || clientProfiles[0] || LOCAL_CLIENT_PROFILES[0];
 
   useEffect(() => {
     if (client && client.id !== selectedClientId) {
@@ -56,7 +58,7 @@ export default function RMCopilotDossier({
         >
           <option disabled>
             {isPartnerOrOps
-              ? `— ${accessibleClients.length} of ${FIRM_METRICS.activeClients} firm-wide (demo) —`
+              ? `— ${accessibleClients.length} of ${firmMetrics.activeClients} firm-wide (demo) —`
               : `— ${accessibleClients.length} of ${currentRM.clientsCount} in book (demo) —`}
           </option>
           {accessibleClients.map(c => (

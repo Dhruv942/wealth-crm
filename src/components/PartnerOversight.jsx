@@ -4,7 +4,12 @@ import {
   Clock, CheckCircle2, ArrowRight, ShieldAlert, Zap, BarChart2,
   FileCheck, ExternalLink, HelpCircle, GraduationCap, FlaskConical
 } from 'lucide-react';
-import { TEAM_MEMBERS, FIRM_METRICS, CLIENT_PROFILES, DEMO_CALL_SCENARIOS } from '../mockData/wealthData';
+import {
+  TEAM_MEMBERS as LOCAL_TEAM_MEMBERS,
+  FIRM_METRICS as LOCAL_FIRM_METRICS,
+  CLIENT_PROFILES as LOCAL_CLIENT_PROFILES,
+  DEMO_CALL_SCENARIOS as LOCAL_DEMO_CALL_SCENARIOS
+} from '../mockData/wealthData';
 
 // Risk-heatmap helpers — each derived from fields already on CLIENT_PROFILES, not new invented scores
 function getAllocationDriftSeverity(client) {
@@ -36,11 +41,18 @@ const HEATMAP_COLORS = {
   low: 'bg-emerald-950/40 text-emerald-300 border-emerald-800/60'
 };
 
-export default function PartnerOversight({ tasks }) {
+export default function PartnerOversight({
+  tasks,
+  teamMembers = LOCAL_TEAM_MEMBERS,
+  clientProfiles = LOCAL_CLIENT_PROFILES,
+  demoCallScenarios = LOCAL_DEMO_CALL_SCENARIOS,
+  firmMetrics = LOCAL_FIRM_METRICS,
+  auditLogs = []
+}) {
   // Derive branch status from the same data shown in the capacity matrix
   // and SLA counts below, rather than a fixed "always healthy" label
   const hasNearBreachSLA = tasks.some(t => t.slaStatus === 'near_breach');
-  const hasCapacityIssue = TEAM_MEMBERS.some(
+  const hasCapacityIssue = teamMembers.some(
     m => tasks.filter(t => t.assignedTo === m.id).length >= 5
   );
   const branchNeedsAttention = hasNearBreachSLA || hasCapacityIssue;
@@ -61,41 +73,6 @@ export default function PartnerOversight({ tasks }) {
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
   };
-
-  const auditLogs = [
-    {
-      timestamp: "05-09-26 08:48 IST",
-      event: "Auto-CRM Log Generated",
-      client: "Vikramaditya Singhania",
-      advisor: "Rahul Sharma (RM)",
-      detail: "Captured ₹75L property token + ₹3.45 Cr upcoming liquidity. Arbitrage deployment approved.",
-      complianceStatus: "PASSED (Suitability Check)"
-    },
-    {
-      timestamp: "05-09-26 08:30 IST",
-      event: "CAMS Re-KYC Alert Dispatched",
-      client: "Sunita & Rajesh Goenka",
-      advisor: "Central Ops Desk",
-      detail: "Spouse DigiLocker KYC link triggered to prevent folio freeze.",
-      complianceStatus: "URGENT COMPLIANCE ACTION"
-    },
-    {
-      timestamp: "04-09-26 19:15 IST",
-      event: "WhatsApp Async Review Confirmed",
-      client: "Dr. Ananya Iyer",
-      advisor: "Priya Nair (RM)",
-      detail: "BSE StAR MF STP authorization completed for ₹1.5L/month.",
-      complianceStatus: "PASSED (KYC & Risk Match)"
-    },
-    {
-      timestamp: "04-09-26 15:40 IST",
-      event: "Tax-Loss Harvesting Flag",
-      client: "Kabir Malhotra",
-      advisor: "Rahul Sharma (RM)",
-      detail: "Identified ₹4.5L STCL in active equities to offset capital gains.",
-      complianceStatus: "PASSED (Tax Optimization Protocol)"
-    }
-  ];
 
   return (
     <div className="space-y-6">
@@ -132,25 +109,25 @@ export default function PartnerOversight({ tasks }) {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-6">
           <div className="p-4 rounded-xl bg-slate-950 border border-slate-800">
             <span className="text-xs text-slate-400 uppercase tracking-wider font-semibold block">Total Managed AUM</span>
-            <span className="text-2xl font-black text-white mt-1 block">{FIRM_METRICS.totalAUM}</span>
+            <span className="text-2xl font-black text-white mt-1 block">{firmMetrics.totalAUM}</span>
             <span className="text-xs text-emerald-400 mt-1 block font-medium">+14.2% YoY Inflows</span>
           </div>
 
           <div className="p-4 rounded-xl bg-slate-950 border border-slate-800">
             <span className="text-xs text-slate-400 uppercase tracking-wider font-semibold block">Unallocated Client Cash</span>
-            <span className="text-2xl font-black text-amber-400 mt-1 block">{FIRM_METRICS.unallocatedCashAcrossClients}</span>
+            <span className="text-2xl font-black text-amber-400 mt-1 block">{firmMetrics.unallocatedCashAcrossClients}</span>
             <span className="text-xs text-slate-400 mt-1 block">Immediate fee expansion pool</span>
           </div>
 
           <div className="p-4 rounded-xl bg-slate-950 border border-slate-800">
             <span className="text-xs text-slate-400 uppercase tracking-wider font-semibold block">CRM Log Adherence</span>
-            <span className="text-2xl font-black text-sky-400 mt-1 block">{FIRM_METRICS.crmHygieneScore}</span>
+            <span className="text-2xl font-black text-sky-400 mt-1 block">{firmMetrics.crmHygieneScore}</span>
             <span className="text-xs text-slate-400 mt-1 block">Auto-logged from RM call notes</span>
           </div>
 
           <div className="p-4 rounded-xl bg-slate-950 border border-slate-800">
             <span className="text-xs text-slate-400 uppercase tracking-wider font-semibold block">Tax Loss Harvest Window</span>
-            <span className="text-2xl font-black text-emerald-400 mt-1 block">{FIRM_METRICS.taxLossHarvestableWindow}</span>
+            <span className="text-2xl font-black text-emerald-400 mt-1 block">{firmMetrics.taxLossHarvestableWindow}</span>
             <span className="text-xs text-slate-400 mt-1 block">Active across 4 HNWI portfolios</span>
           </div>
         </div>
@@ -185,7 +162,7 @@ export default function PartnerOversight({ tasks }) {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60">
-              {TEAM_MEMBERS.map(member => {
+              {teamMembers.map(member => {
                 const memberTasks = tasks.filter(t => t.assignedTo === member.id);
                 return (
                   <tr key={member.id} className="hover:bg-slate-950/50 transition-colors">
@@ -248,11 +225,11 @@ export default function PartnerOversight({ tasks }) {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60">
-              {CLIENT_PROFILES.map(c => {
+              {clientProfiles.map(c => {
                 const drift = getAllocationDriftSeverity(c);
                 const idle = getIdleCashSeverity(c);
                 const kyc = getKycSeverity(c);
-                const rm = TEAM_MEMBERS.find(m => m.id === c.assignedRMId);
+                const rm = teamMembers.find(m => m.id === c.assignedRMId);
                 return (
                   <tr key={c.id} className="hover:bg-slate-950/50 transition-colors">
                     <td className="py-2.5 px-3 font-semibold text-white">{c.name}</td>
@@ -297,9 +274,9 @@ export default function PartnerOversight({ tasks }) {
           </span>
         </div>
         <div className="space-y-2.5">
-          {DEMO_CALL_SCENARIOS.map(sc => {
-            const client = CLIENT_PROFILES.find(c => c.id === sc.clientId);
-            const rm = client ? TEAM_MEMBERS.find(m => m.id === client.assignedRMId) : null;
+          {demoCallScenarios.map(sc => {
+            const client = clientProfiles.find(c => c.id === sc.clientId);
+            const rm = client ? teamMembers.find(m => m.id === client.assignedRMId) : null;
             const cq = sc.callQuality;
             if (!cq) return null;
             return (

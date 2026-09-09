@@ -5,11 +5,45 @@ import {
   MessageSquare, Mail, Building, Plus, ArrowUpRight, Zap, Phone,
   Pencil, Lock, Clock
 } from 'lucide-react';
-import { CLIENT_PROFILES, DEMO_CALL_SCENARIOS, PLAYBOOK_LIBRARY } from '../mockData/wealthData';
+import { CLIENT_PROFILES as LOCAL_CLIENT_PROFILES, DEMO_CALL_SCENARIOS as LOCAL_DEMO_CALL_SCENARIOS, PLAYBOOK_LIBRARY as LOCAL_PLAYBOOK_LIBRARY } from '../mockData/wealthData';
 import { mockExtractFromNotes } from '../mockData/mockNlpPipeline';
+import {
+  confirmCrmDraft,
+  createCallNote,
+  dispatchCrmTasks,
+  syncCrmDraft,
+  synthesizeCallNote,
+  updateCrmDraft
+} from '../services/api';
+
+function normalizeParsedData(parsedData) {
+  if (!parsedData) return parsedData;
+  return {
+    ...parsedData,
+    liquiditySignals: (parsedData.liquiditySignals || []).map(signal => ({
+      ...signal,
+      amount: signal.amount || signal.amountDisplay
+    })),
+    generatedOpsTasks: (parsedData.generatedOpsTasks || []).map(task => ({
+      ...task,
+      assignedTo: task.assignedTo || task.assignedToUserId || 'ops-1',
+      assignedToName: task.assignedToName || 'Central Ops & Compliance',
+      clientAUM: task.clientAUM || '—',
+      clientTier: task.clientTier || 'Client',
+      slaCountdown: task.slaCountdown || '3h 00m',
+      slaStatus: task.slaStatus || 'urgent',
+      status: task.status === 'suggested' ? 'pending_ops' : (task.status || 'pending_ops')
+    }))
+  };
+}
 
 export default function AutoCRMUpdate({
   currentRM,
+  clientProfiles = LOCAL_CLIENT_PROFILES,
+  demoCallScenarios = LOCAL_DEMO_CALL_SCENARIOS,
+  playbookLibrary = LOCAL_PLAYBOOK_LIBRARY,
+  apiToken,
+  onBackendRefresh,
   selectedClientId,
   onSelectClient,
   onTasksGenerated,
@@ -20,18 +54,18 @@ export default function AutoCRMUpdate({
   // Strict client book isolation, matching the Task Desk and Co-Pilot Dossier:
   // RMs only see call scenarios for clients assigned to them
   const accessibleScenarios = isManagerOrOps
-    ? DEMO_CALL_SCENARIOS
-    : DEMO_CALL_SCENARIOS.filter(s => {
-        const client = CLIENT_PROFILES.find(c => c.id === s.clientId);
+    ? demoCallScenarios
+    : demoCallScenarios.filter(s => {
+        const client = clientProfiles.find(c => c.id === s.clientId);
         return client && client.assignedRMId === currentRM.id;
       });
 
-  const initialScenario = accessibleScenarios.find(s => s.clientId === selectedClientId) || accessibleScenarios[0] || DEMO_CALL_SCENARIOS[0];
+  const initialScenario = accessibleScenarios.find(s => s.clientId === selectedClientId) || accessibleScenarios[0] || LOCAL_DEMO_CALL_SCENARIOS[0];
 
   const [activeScenario, setActiveScenario] = useState(initialScenario);
   const [rawText, setRawText] = useState(initialScenario.rawNotes);
   const [isSynthesizing, setIsSynthesizing] = useState(false);
-  const [parsedData, setParsedData] = useState(initialScenario.parsedResult);
+  const [parsedData, setParsedData] = useState(normalizeParsedData(initialScenario.parsedResult));
   const [isRecording, setIsRecording] = useState(false);
   const [copiedType, setCopiedType] = useState(null);
   const [isSyncedToCRM, setIsSyncedToCRM] = useState(false);
@@ -40,7 +74,7 @@ export default function AutoCRMUpdate({
   const [isDraftConfirmed, setIsDraftConfirmed] = useState(false);
   const [editedSummary, setEditedSummary] = useState(initialScenario.parsedResult.summary);
 
-  const activeClient = CLIENT_PROFILES.find(c => c.id === activeScenario.clientId);
+  const activeClient = clientProfiles.find(c => c.id === activeScenario.clientId);
 
   // Sync if selectedClientId changes from another tab, or if switching RM persona
   // makes the current scenario inaccessible
@@ -50,7 +84,7 @@ export default function AutoCRMUpdate({
     if (next && next.id !== activeScenario.id) {
       setActiveScenario(next);
       setRawText(next.rawNotes);
-      setParsedData(next.parsedResult);
+      setParsedData(normalizeParsedData(next.parsedResult));
       setEditedSummary(next.parsedResult.summary);
       setIsSyncedToCRM(false);
       setCrmRecordId(null);
@@ -65,7 +99,7 @@ export default function AutoCRMUpdate({
   const handleSelectScenario = (scenario) => {
     setActiveScenario(scenario);
     setRawText(scenario.rawNotes);
-    setParsedData(scenario.parsedResult);
+    setParsedData(normalizeParsedData(scenario.parsedResult));
     setEditedSummary(scenario.parsedResult.summary);
     onSelectClient(scenario.clientId);
     setIsSyncedToCRM(false);
@@ -76,15 +110,23 @@ export default function AutoCRMUpdate({
 
   const handleSynthesize = () => {
     setIsSynthesizing(true);
-    setTimeout(() => {
+    setTimeout(async () => {
       let nextParsed;
-      // If the RM typed their own notes, run the heuristic mock extractor (see
-      // mockNlpPipeline.js) instead of the pre-written scenario result
-      if (rawText !== activeScenario.rawNotes) {
-        nextParsed = mockExtractFromNotes(rawText, activeScenario.clientName);
-      } else {
-        nextParsed = activeScenario.parsedResult;
+      try {
+        if (apiToken) {
+          const note = await createCallNote(apiToken, activeScenario.clientId, rawText);
+          nextParsed = await synthesizeCallNote(apiToken, note.id);
+        }
+      } catch (error) {
+        onShowToast(`Backend synthesis unavailable, using local extractor. ${error.message}`);
       }
+      if (!nextParsed) {
+        // If backend is unavailable, retain the local demo extractor.
+        nextParsed = rawText !== activeScenario.rawNotes
+          ? mockExtractFromNotes(rawText, activeScenario.clientName)
+          : activeScenario.parsedResult;
+      }
+      nextParsed = normalizeParsedData(nextParsed);
       setParsedData(nextParsed);
       setEditedSummary(nextParsed.summary);
       setIsSynthesizing(false);
@@ -96,28 +138,53 @@ export default function AutoCRMUpdate({
     }, 600);
   };
 
-  const handleConfirmDraft = () => {
+  const handleConfirmDraft = async () => {
+    try {
+      if (apiToken && parsedData?.crmDraftId) {
+        await updateCrmDraft(apiToken, parsedData.crmDraftId, { summary: editedSummary });
+        await confirmCrmDraft(apiToken, parsedData.crmDraftId);
+      }
+    } catch (error) {
+      onShowToast(`Backend draft confirmation failed: ${error.message}`);
+      return;
+    }
     setParsedData(prev => ({ ...prev, summary: editedSummary }));
     setIsDraftConfirmed(true);
     onShowToast('Summary confirmed. Ready to sync and dispatch.');
   };
 
-  const handleDispatchOpsTasks = () => {
+  const handleDispatchOpsTasks = async () => {
     if (isDraftConfirmed && parsedData && parsedData.generatedOpsTasks && !tasksDispatched) {
+      try {
+        if (apiToken && parsedData.crmDraftId) {
+          const result = await dispatchCrmTasks(apiToken, parsedData.crmDraftId, `${parsedData.crmDraftId}-dispatch`);
+          await onBackendRefresh?.();
+          setTasksDispatched(true);
+          onShowToast(`Backend dispatched ${result.createdTaskIds.length} task(s) to Standup Board.`);
+          return;
+        }
+      } catch (error) {
+        onShowToast(`Backend dispatch failed, using local queue. ${error.message}`);
+      }
       onTasksGenerated(parsedData.generatedOpsTasks);
       setTasksDispatched(true);
       onShowToast(`Dispatched ${parsedData.generatedOpsTasks.length} tasks directly to Central Ops Queue!`);
     }
   };
 
-  const handleSyncToCRM = () => {
+  const handleSyncToCRM = async () => {
     if (!isDraftConfirmed) return;
-    // MOCK — see CONTEXT.md "Dev Build Required" (Dev 1: Backend/CRM).
-    // There is no real CRM to sync to, so no real external record is created.
-    // This generates a client-side, look-and-feel-only confirmation ID so the
-    // demo can show what a successful CRM sync response would look like. A real
-    // build must call the actual CRM's write API and store the ID IT returns.
-    const mockRecordId = `MOCK-CRM-${activeClient?.id?.toUpperCase() || 'CLI'}-${Date.now().toString().slice(-6)}`;
+    let mockRecordId;
+    try {
+      if (apiToken && parsedData?.crmDraftId) {
+        const result = await syncCrmDraft(apiToken, parsedData.crmDraftId);
+        mockRecordId = result.externalRecordId;
+        await onBackendRefresh?.();
+      }
+    } catch (error) {
+      onShowToast(`Backend CRM sync failed, using local mock ID. ${error.message}`);
+    }
+    mockRecordId ||= `MOCK-CRM-${activeClient?.id?.toUpperCase() || 'CLI'}-${Date.now().toString().slice(-6)}`;
     setCrmRecordId(mockRecordId);
     setIsSyncedToCRM(true);
     onShowToast(`Activity log & pipeline signals staged for CRM export.`);
@@ -188,7 +255,7 @@ export default function AutoCRMUpdate({
 
         <div className="pt-2 border-t border-slate-800/60 flex flex-wrap items-center gap-2">
           <span className="text-[10px] text-slate-500 uppercase font-semibold">Playbook library:</span>
-          {PLAYBOOK_LIBRARY.map(p => (
+          {playbookLibrary.map(p => (
             <span
               key={p.momentType}
               className={`text-[10px] px-2 py-0.5 rounded border font-medium ${
