@@ -24,6 +24,10 @@ import {
   loginDemoRole,
   updateTaskStatus
 } from './services/api';
+import {
+  addGeneratedTasksOnce,
+  getClientIdleSavingsLakhs
+} from './utils/frontendState';
 
 const toRoleId = (user) => {
   if (!user) return 'rm-1';
@@ -140,8 +144,7 @@ export default function App() {
   const nearBreachTasks = accessibleTasks.filter(t => t.slaStatus === 'near_breach');
   const pendingReKyc = accessibleClients.filter(c => (c.kycStatus || '').startsWith('Action Required'));
   const idleCashTotalLakhs = accessibleClients.reduce((sum, c) => {
-    const match = (c.idleSavings || '').match(/([\d.]+)\s*Lakhs?/i);
-    return sum + (match ? parseFloat(match[1]) : 0);
+    return sum + getClientIdleSavingsLakhs(c);
   }, 0);
   const nudgeCount = nearBreachTasks.length + pendingReKyc.length + (idleCashTotalLakhs > 0 ? 1 : 0);
 
@@ -234,6 +237,7 @@ export default function App() {
   };
 
   const refreshCurrentRole = () => loadBackendForRole(currentRM.id, { silent: true });
+  const handleRetryConnection = () => loadBackendForRole(currentRM.id);
 
   const handleUpdateTaskStatus = async (taskId, nextStatus) => {
     setTasks(prev => prev.map(t => {
@@ -277,7 +281,7 @@ export default function App() {
   };
 
   const handleTasksGenerated = (newTasks) => {
-    setTasks(prev => [...newTasks, ...prev]);
+    setTasks(prev => addGeneratedTasksOnce(prev, newTasks));
   };
 
   // Task count badge for current user
@@ -315,6 +319,33 @@ export default function App() {
               <Clock className="w-3.5 h-3.5 text-cyan-400" />
               <span>{currentTime}</span>
             </div>
+
+            {/* Backend Connectivity Status — click to retry when offline/connecting */}
+            <button
+              onClick={apiStatus !== 'connected' ? handleRetryConnection : undefined}
+              disabled={apiStatus === 'connected'}
+              title={
+                apiStatus === 'connected'
+                  ? 'Connected to K2 WealthDesk backend'
+                  : apiStatus === 'connecting'
+                    ? 'Connecting to backend...'
+                    : 'Backend unreachable — using local demo data. Click to retry.'
+              }
+              className={`hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] font-semibold transition-colors ${
+                apiStatus === 'connected'
+                  ? 'bg-emerald-950/40 border-emerald-800 text-emerald-300 cursor-default'
+                  : apiStatus === 'connecting'
+                    ? 'bg-slate-900 border-slate-800 text-slate-400'
+                    : 'bg-amber-950/40 border-amber-800 text-amber-300 hover:border-amber-600 cursor-pointer'
+              }`}
+            >
+              {apiStatus === 'connected' && <CheckCircle2 className="w-3.5 h-3.5" />}
+              {apiStatus === 'connecting' && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
+              {apiStatus === 'offline' && <AlertTriangle className="w-3.5 h-3.5" />}
+              <span>
+                {apiStatus === 'connected' ? 'Backend Connected' : apiStatus === 'connecting' ? 'Connecting...' : 'Offline — Retry'}
+              </span>
+            </button>
 
             {/* Command Palette Trigger */}
             <button
@@ -456,7 +487,7 @@ export default function App() {
 
       {/* Main Workspace Body */}
       <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 w-full">
-        {activeTab === 'allocation' && (
+        <section className={activeTab === 'allocation' ? 'block' : 'hidden'}>
           <TaskAllocationDesk
             tasks={tasks}
             teamMembers={teamMembers}
@@ -468,23 +499,24 @@ export default function App() {
             onSelectClientForCopilot={setSelectedClientId}
             onNavigateToCopilot={() => setActiveTab('copilot')}
           />
-        )}
+        </section>
 
-        {activeTab === 'copilot' && (
+        <section className={activeTab === 'copilot' ? 'block' : 'hidden'}>
           <RMCopilotDossier
             currentRM={currentRM}
             clientProfiles={clientProfiles}
             firmMetrics={firmMetrics}
             selectedClientId={selectedClientId}
             onSelectClient={setSelectedClientId}
+            onShowToast={showToast}
             onNavigateToAutoCRM={(clientId) => {
               setSelectedClientId(clientId);
               setActiveTab('autocrm');
             }}
           />
-        )}
+        </section>
 
-        {activeTab === 'autocrm' && (
+        <section className={activeTab === 'autocrm' ? 'block' : 'hidden'}>
           <AutoCRMUpdate
             currentRM={currentRM}
             clientProfiles={clientProfiles}
@@ -492,14 +524,15 @@ export default function App() {
             playbookLibrary={playbookLibrary}
             apiToken={apiToken}
             onBackendRefresh={refreshCurrentRole}
+            onNavigateToAllocation={() => setActiveTab('allocation')}
             selectedClientId={selectedClientId}
             onSelectClient={setSelectedClientId}
             onTasksGenerated={handleTasksGenerated}
             onShowToast={showToast}
           />
-        )}
+        </section>
 
-        {activeTab === 'oversight' && isManagerOrOps && (
+        <section className={activeTab === 'oversight' && isManagerOrOps ? 'block' : 'hidden'}>
           <PartnerOversight 
             tasks={tasks}
             teamMembers={teamMembers}
@@ -508,7 +541,7 @@ export default function App() {
             firmMetrics={firmMetrics}
             auditLogs={auditLogs}
           />
-        )}
+        </section>
       </main>
 
       {/* Global Toast Notification */}

@@ -6,6 +6,7 @@ import {
   FileText, Shield, DollarSign, Lock, Gift, CalendarClock
 } from 'lucide-react';
 import { CLIENT_PROFILES as LOCAL_CLIENT_PROFILES, FIRM_METRICS as LOCAL_FIRM_METRICS } from '../mockData/wealthData';
+import { copyTextToClipboard } from '../utils/frontendState';
 
 export default function RMCopilotDossier({ 
   currentRM,
@@ -13,6 +14,7 @@ export default function RMCopilotDossier({
   firmMetrics = LOCAL_FIRM_METRICS,
   selectedClientId, 
   onSelectClient, 
+  onShowToast,
   onNavigateToAutoCRM 
 }) {
   const [copiedIndex, setCopiedIndex] = useState(null);
@@ -35,11 +37,16 @@ export default function RMCopilotDossier({
     }
   }, [currentRM.id]);
 
-  const handleCopyTalkingPoints = () => {
+  const handleCopyTalkingPoints = async () => {
     const text = client.talkingPoints.map((tp, i) => `${i + 1}. ${tp}`).join('\n');
-    navigator.clipboard.writeText(text);
-    setCopiedIndex('all');
-    setTimeout(() => setCopiedIndex(null), 2000);
+    try {
+      await copyTextToClipboard(text);
+      setCopiedIndex('all');
+      setTimeout(() => setCopiedIndex(null), 2000);
+      onShowToast?.('Copied talking points to clipboard!');
+    } catch {
+      onShowToast?.('Could not copy talking points. Select the text manually.');
+    }
   };
 
   return (

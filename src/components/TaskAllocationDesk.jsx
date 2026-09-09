@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   CheckCircle2, Clock, AlertTriangle, ArrowRight, User, 
   Filter, Plus, RefreshCw, ChevronRight, Layers, ExternalLink,
   ShieldAlert, Sparkles, Building, ArrowUpRight, Lock, Send
 } from 'lucide-react';
 import { TEAM_MEMBERS as LOCAL_TEAM_MEMBERS, FIRM_METRICS as LOCAL_FIRM_METRICS, CLIENT_PROFILES as LOCAL_CLIENT_PROFILES } from '../mockData/wealthData';
+import { formatIdleCashFromClients } from '../utils/frontendState';
 
 const ALERT_SEVERITY_RANK = { critical: 4, warning: 3, opportunity: 2, info: 1 };
 
@@ -24,6 +25,15 @@ export default function TaskAllocationDesk({
   const [selectedPriority, setSelectedPriority] = useState('all');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [handoffModalTask, setHandoffModalTask] = useState(null);
+
+  useEffect(() => {
+    if (!handoffModalTask) return;
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') setHandoffModalTask(null);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handoffModalTask]);
 
   // Strict role-based task visibility:
   // RMs only see tasks assigned to them OR tasks for their clients with Ops
@@ -55,6 +65,10 @@ export default function TaskAllocationDesk({
     .filter(Boolean)
     .sort((a, b) => (ALERT_SEVERITY_RANK[b.alert.severity] || 0) - (ALERT_SEVERITY_RANK[a.alert.severity] || 0))
     .slice(0, 3);
+
+  const idleCashDisplay = isManagerOrOps
+    ? firmMetrics.unallocatedCashAcrossClients
+    : formatIdleCashFromClients(nbaAccessibleClients);
 
   const columns = [
     { id: 'pending_rm', title: isManagerOrOps ? 'Action Required (RM)' : 'My Action Items', badge: 'bg-amber-500/10 text-amber-400 border-amber-500/20' },
@@ -165,7 +179,7 @@ export default function TaskAllocationDesk({
           </div>
           <div className="mt-2">
             <span className="text-2xl font-bold text-emerald-400 tracking-tight">
-              {isManagerOrOps ? firmMetrics.unallocatedCashAcrossClients : '₹45.0 Lakhs'}
+              {idleCashDisplay}
             </span>
             <span className="text-xs text-slate-400 ml-2">Arbitrage Harvest Ready</span>
           </div>
@@ -452,8 +466,14 @@ export default function TaskAllocationDesk({
 
       {/* Cluster Head Reassign Modal */}
       {handoffModalTask && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-slate-900 border border-slate-800 rounded-xl max-w-md w-full p-5 space-y-4 shadow-2xl">
+        <div
+          className="fixed inset-0 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4 z-50"
+          onClick={() => setHandoffModalTask(null)}
+        >
+          <div
+            className="bg-slate-900 border border-slate-800 rounded-xl max-w-md w-full p-5 space-y-4 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <h3 className="text-sm font-bold text-white flex items-center gap-2">
                 <RefreshCw className="w-4 h-4 text-cyan-400" />

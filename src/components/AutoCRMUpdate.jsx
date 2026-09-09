@@ -15,6 +15,7 @@ import {
   synthesizeCallNote,
   updateCrmDraft
 } from '../services/api';
+import { copyTextToClipboard } from '../utils/frontendState';
 
 function normalizeParsedData(parsedData) {
   if (!parsedData) return parsedData;
@@ -44,6 +45,7 @@ export default function AutoCRMUpdate({
   playbookLibrary = LOCAL_PLAYBOOK_LIBRARY,
   apiToken,
   onBackendRefresh,
+  onNavigateToAllocation,
   selectedClientId,
   onSelectClient,
   onTasksGenerated,
@@ -70,6 +72,9 @@ export default function AutoCRMUpdate({
   const [copiedType, setCopiedType] = useState(null);
   const [isSyncedToCRM, setIsSyncedToCRM] = useState(false);
   const [crmRecordId, setCrmRecordId] = useState(null);
+  const [crmRecordSource, setCrmRecordSource] = useState(null); // 'backend' | 'mock'
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncError, setSyncError] = useState(null);
   const [tasksDispatched, setTasksDispatched] = useState(false);
   const [isDraftConfirmed, setIsDraftConfirmed] = useState(false);
   const [editedSummary, setEditedSummary] = useState(initialScenario.parsedResult.summary);
@@ -88,6 +93,8 @@ export default function AutoCRMUpdate({
       setEditedSummary(next.parsedResult.summary);
       setIsSyncedToCRM(false);
       setCrmRecordId(null);
+      setCrmRecordSource(null);
+      setSyncError(null);
       setTasksDispatched(false);
       setIsDraftConfirmed(false);
       if (!match) {
@@ -104,6 +111,8 @@ export default function AutoCRMUpdate({
     onSelectClient(scenario.clientId);
     setIsSyncedToCRM(false);
     setCrmRecordId(null);
+    setCrmRecordSource(null);
+    setSyncError(null);
     setTasksDispatched(false);
     setIsDraftConfirmed(false);
   };
@@ -132,6 +141,8 @@ export default function AutoCRMUpdate({
       setIsSynthesizing(false);
       setIsSyncedToCRM(false);
       setCrmRecordId(null);
+      setCrmRecordSource(null);
+      setSyncError(null);
       setTasksDispatched(false);
       setIsDraftConfirmed(false);
       onShowToast('Notes parsed into a draft CRM record. Review the summary before syncing.');
@@ -153,48 +164,106 @@ export default function AutoCRMUpdate({
     onShowToast('Summary confirmed. Ready to sync and dispatch.');
   };
 
+  const ensureBackendDraft = async () => {
+    if (!apiToken) return null;
+    if (parsedData?.crmDraftId) return parsedData;
+
+    const note = await createCallNote(apiToken, activeScenario.clientId, rawText);
+    const nextParsed = normalizeParsedData(await synthesizeCallNote(apiToken, note.id));
+    await updateCrmDraft(apiToken, nextParsed.crmDraftId, { summary: editedSummary || nextParsed.summary });
+    await confirmCrmDraft(apiToken, nextParsed.crmDraftId);
+
+    const confirmedParsed = {
+      ...nextParsed,
+      summary: editedSummary || nextParsed.summary
+    };
+    setParsedData(confirmedParsed);
+    setEditedSummary(confirmedParsed.summary);
+    setIsDraftConfirmed(true);
+    return confirmedParsed;
+  };
+
   const handleDispatchOpsTasks = async () => {
     if (isDraftConfirmed && parsedData && parsedData.generatedOpsTasks && !tasksDispatched) {
       try {
-        if (apiToken && parsedData.crmDraftId) {
-          const result = await dispatchCrmTasks(apiToken, parsedData.crmDraftId, `${parsedData.crmDraftId}-dispatch`);
-          await onBackendRefresh?.();
-          setTasksDispatched(true);
-          onShowToast(`Backend dispatched ${result.createdTaskIds.length} task(s) to Standup Board.`);
-          return;
+        if (apiToken) {
+          const draft = await ensureBackendDraft();
+          if (draft?.crmDraftId) {
+            const result = await dispatchCrmTasks(apiToken, draft.crmDraftId, `${draft.crmDraftId}-dispatch`);
+            setTasksDispatched(true);
+            await onBackendRefresh?.();
+            onNavigateToAllocation?.();
+            onShowToast(
+              result.createdTaskIds.length > 0
+                ? `Backend dispatched ${result.createdTaskIds.length} task(s) to Standup Board.`
+                : 'These tasks were already on the Standup Board.'
+            );
+            return;
+          }
         }
       } catch (error) {
         onShowToast(`Backend dispatch failed, using local queue. ${error.message}`);
       }
-      onTasksGenerated(parsedData.generatedOpsTasks);
+      onTasksGenerated(parsedData.generatedOpsTasks.map(task => ({
+        ...task,
+        clientId: activeScenario.clientId,
+        clientName: activeScenario.clientName,
+        clientAUM: task.clientAUM || activeClient?.aumDisplay || '—',
+        clientTier: task.clientTier || activeClient?.tier || 'Client',
+        assignedTo: task.assignedTo || task.assignedToUserId || 'ops-1',
+        assignedToName: task.assignedToName || 'Central Ops & Compliance',
+        details: task.details || parsedData.summary,
+        source: 'Auto-CRM Synthesizer'
+      })));
       setTasksDispatched(true);
+      onNavigateToAllocation?.();
       onShowToast(`Dispatched ${parsedData.generatedOpsTasks.length} tasks directly to Central Ops Queue!`);
     }
   };
 
   const handleSyncToCRM = async () => {
     if (!isDraftConfirmed) return;
-    let mockRecordId;
-    try {
-      if (apiToken && parsedData?.crmDraftId) {
-        const result = await syncCrmDraft(apiToken, parsedData.crmDraftId);
-        mockRecordId = result.externalRecordId;
-        await onBackendRefresh?.();
-      }
-    } catch (error) {
-      onShowToast(`Backend CRM sync failed, using local mock ID. ${error.message}`);
+    setSyncError(null);
+
+    // No backend session at all: honest local demo mode, clearly badged as mock —
+    // this is not a failure, there was never a real CRM to reach.
+    if (!apiToken) {
+      const mockRecordId = `MOCK-CRM-${activeClient?.id?.toUpperCase() || 'CLI'}-${Date.now().toString().slice(-6)}`;
+      setCrmRecordId(mockRecordId);
+      setCrmRecordSource('mock');
+      setIsSyncedToCRM(true);
+      onShowToast('Activity log & pipeline signals staged for CRM export (local demo mode — no backend connected).');
+      return;
     }
-    mockRecordId ||= `MOCK-CRM-${activeClient?.id?.toUpperCase() || 'CLI'}-${Date.now().toString().slice(-6)}`;
-    setCrmRecordId(mockRecordId);
-    setIsSyncedToCRM(true);
-    onShowToast(`Activity log & pipeline signals staged for CRM export.`);
+
+    // A backend session exists: a failure here is a real failure and must surface as one,
+    // never as a fake success. See CONTEXT.md "Dev Build Required" 8.5.
+    setIsSyncing(true);
+    try {
+      const draft = await ensureBackendDraft();
+      const result = await syncCrmDraft(apiToken, draft.crmDraftId);
+      await onBackendRefresh?.();
+      setCrmRecordId(result.externalRecordId);
+      setCrmRecordSource('backend');
+      setIsSyncedToCRM(true);
+      onShowToast('Synced to CRM. Activity log & pipeline signals recorded.');
+    } catch (error) {
+      setSyncError(error.message);
+      onShowToast(`CRM sync failed: ${error.message}`);
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
-  const handleCopy = (text, type) => {
-    navigator.clipboard.writeText(text);
-    setCopiedType(type);
-    setTimeout(() => setCopiedType(null), 2000);
-    onShowToast(`Copied ${type} to clipboard!`);
+  const handleCopy = async (text, type) => {
+    try {
+      await copyTextToClipboard(text);
+      setCopiedType(type);
+      setTimeout(() => setCopiedType(null), 2000);
+      onShowToast(`Copied ${type} to clipboard!`);
+    } catch {
+      onShowToast(`Could not copy ${type}. Select the text manually.`);
+    }
   };
 
   return (
@@ -367,24 +436,34 @@ export default function AutoCRMUpdate({
                     <span className={`text-[10px] px-2 py-0.5 rounded font-semibold border ${
                       isSyncedToCRM
                         ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                        : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                        : syncError
+                          ? 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                          : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
                     }`}>
-                      Audit Status: {isSyncedToCRM ? 'Synced' : 'Draft, Not Yet Synced'}
+                      Audit Status: {isSyncedToCRM ? 'Synced' : syncError ? 'Sync Failed' : 'Draft, Not Yet Synced'}
                     </span>
                     <button
                       onClick={handleSyncToCRM}
-                      disabled={isSyncedToCRM || !isDraftConfirmed}
+                      disabled={isSyncedToCRM || !isDraftConfirmed || isSyncing}
                       title={!isDraftConfirmed ? 'Confirm the summary above first' : undefined}
                       className={`text-xs px-3 py-1 rounded font-semibold flex items-center gap-1 transition-colors ${
                         isSyncedToCRM
                           ? 'bg-emerald-950 text-emerald-400 border border-emerald-800'
-                          : isDraftConfirmed
-                            ? 'bg-cyan-600 hover:bg-cyan-500 text-white'
-                            : 'bg-slate-800 text-slate-500 cursor-not-allowed'
+                          : syncError
+                            ? 'bg-rose-600 hover:bg-rose-500 text-white'
+                            : isDraftConfirmed
+                              ? 'bg-cyan-600 hover:bg-cyan-500 text-white'
+                              : 'bg-slate-800 text-slate-500 cursor-not-allowed'
                       }`}
                     >
-                      {isSyncedToCRM ? <CheckCircle2 className="w-3.5 h-3.5" /> : <RefreshCw className="w-3.5 h-3.5" />}
-                      <span>{isSyncedToCRM ? 'Synced to CRM' : 'Sync to CRM'}</span>
+                      {isSyncedToCRM ? (
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                      ) : (
+                        <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+                      )}
+                      <span>
+                        {isSyncedToCRM ? 'Synced to CRM' : isSyncing ? 'Syncing...' : syncError ? 'Retry Sync' : 'Sync to CRM'}
+                      </span>
                     </button>
                   </div>
                 </div>
@@ -409,7 +488,8 @@ export default function AutoCRMUpdate({
                   </div>
                 </div>
 
-                {/* Mock CRM sync confirmation — see CONTEXT.md "Dev Build Required" */}
+                {/* CRM sync confirmation — the "Mock ID" badge only appears when the ID */}
+                {/* really is a local fallback (no backend session), never on a real backend response. */}
                 {isSyncedToCRM && crmRecordId && (
                   <div className="p-3 rounded-lg bg-cyan-950/20 border border-cyan-800/40 flex items-center justify-between text-xs">
                     <div className="flex items-center gap-2">
@@ -419,9 +499,32 @@ export default function AutoCRMUpdate({
                         <span className="text-[10px] text-slate-500 font-mono">External Record ID: {crmRecordId}</span>
                       </div>
                     </div>
-                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-900 border border-slate-700 text-slate-400 font-semibold uppercase shrink-0">
-                      Mock ID — see CONTEXT.md
-                    </span>
+                    {crmRecordSource === 'mock' && (
+                      <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-900 border border-slate-700 text-slate-400 font-semibold uppercase shrink-0">
+                        Mock ID — see CONTEXT.md
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                {/* Real sync failure — never masked as success. Offers a direct retry. */}
+                {syncError && !isSyncedToCRM && (
+                  <div className="p-3 rounded-lg bg-rose-950/30 border border-rose-800/60 flex items-center justify-between gap-3 text-xs">
+                    <div className="flex items-center gap-2">
+                      <AlertCircle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                      <div>
+                        <span className="text-rose-200 font-semibold block">CRM sync failed — nothing was recorded</span>
+                        <span className="text-[10px] text-rose-300/80">{syncError}</span>
+                      </div>
+                    </div>
+                    <button
+                      onClick={handleSyncToCRM}
+                      disabled={isSyncing}
+                      className="text-[11px] font-semibold text-white bg-rose-600 hover:bg-rose-500 px-2.5 py-1 rounded shrink-0 flex items-center gap-1"
+                    >
+                      <RefreshCw className={`w-3 h-3 ${isSyncing ? 'animate-spin' : ''}`} />
+                      <span>Retry</span>
+                    </button>
                   </div>
                 )}
 
