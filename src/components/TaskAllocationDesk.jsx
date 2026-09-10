@@ -116,6 +116,27 @@ export default function TaskAllocationDesk({
     );
   };
 
+  const getReallocationMembers = (task) => {
+    if (!task) return [];
+    if (isManagerOrOps && currentRM.level !== 'Operations') return teamMembers;
+    const client = clientProfiles.find(c => c.id === task.clientId);
+    const assignedRmId = client?.assignedRMId || client?.assignedRmId;
+    return teamMembers.filter(member => member.id === 'ops-1' || member.id === assignedRmId);
+  };
+
+  const canAdvanceTask = (task) => {
+    if (task.status === 'completed') return false;
+    if (currentRM.level === 'Operations') return task.assignedTo === currentRM.id;
+    if (currentRM.level === 'Manager') return true;
+    return task.assignedTo === currentRM.id;
+  };
+
+  const getNextStatus = (task) => {
+    if (task.status === 'pending_rm') return 'in_progress';
+    if (task.status === 'in_progress') return task.assignedTo === 'ops-1' ? 'pending_ops' : 'completed';
+    return 'completed';
+  };
+
   return (
     <div className="space-y-6">
       {/* Top Banner: Context-Aware Pulse */}
@@ -155,6 +176,11 @@ export default function TaskAllocationDesk({
                 <span className="text-2xl font-bold text-white tracking-tight">{currentRM.totalAUM}</span>
                 <span className="text-xs text-cyan-400 ml-2 font-medium">{currentRM.clientsCount} Assigned Clients</span>
               </div>
+              {currentRM.bookDisclosure && (
+                <div className="mt-2 text-[11px] leading-snug text-slate-500">
+                  {currentRM.bookDisclosure}
+                </div>
+              )}
             </div>
 
             <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-4 flex flex-col justify-between shadow-sm">
@@ -422,7 +448,7 @@ export default function TaskAllocationDesk({
                               Reallocate
                             </button>
                           ) : (
-                            task.assignedTo !== 'ops-1' && (
+                            task.assignedTo === currentRM.id && task.status !== 'completed' && (
                               <button
                                 onClick={() => onReassignTask(task.id, 'ops-1', 'Central Ops & Compliance')}
                                 className="text-[11px] text-fuchsia-300 hover:text-fuchsia-200 bg-fuchsia-950/60 hover:bg-fuchsia-900/60 border border-fuchsia-800/60 px-2 py-0.5 rounded flex items-center gap-1 transition-colors"
@@ -434,13 +460,10 @@ export default function TaskAllocationDesk({
                             )
                           )}
 
-                          {task.status !== 'completed' ? (
+                          {canAdvanceTask(task) ? (
                             <button
                               onClick={() => {
-                                const nextStatus = 
-                                  task.status === 'pending_rm' ? 'in_progress' :
-                                  task.status === 'in_progress' ? 'pending_ops' : 'completed';
-                                onUpdateTaskStatus(task.id, nextStatus);
+                                onUpdateTaskStatus(task.id, getNextStatus(task));
                               }}
                               className="text-[11px] font-semibold text-emerald-400 hover:text-emerald-300 bg-emerald-950/50 hover:bg-emerald-900/50 border border-emerald-800/50 px-2 py-0.5 rounded flex items-center gap-0.5 transition-colors"
                               title="Advance Status"
@@ -449,8 +472,9 @@ export default function TaskAllocationDesk({
                               <ChevronRight className="w-3 h-3" />
                             </button>
                           ) : (
-                            <span className="text-[10px] text-emerald-400 flex items-center gap-0.5">
-                              <CheckCircle2 className="w-3 h-3" /> Done
+                            <span className={`text-[10px] flex items-center gap-0.5 ${task.status === 'completed' ? 'text-emerald-400' : 'text-slate-500'}`}>
+                              {task.status === 'completed' ? <CheckCircle2 className="w-3 h-3" /> : <Lock className="w-3 h-3" />}
+                              {task.status === 'completed' ? 'Done' : 'View Only'}
                             </span>
                           )}
                         </div>
@@ -477,7 +501,7 @@ export default function TaskAllocationDesk({
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <h3 className="text-sm font-bold text-white flex items-center gap-2">
                 <RefreshCw className="w-4 h-4 text-cyan-400" />
-                Reallocate Task (Cluster Head Authority)
+                Reallocate Task ({currentRM.level === 'Operations' ? 'Ops Desk' : 'Cluster Head Authority'})
               </h3>
               <button 
                 onClick={() => setHandoffModalTask(null)}
@@ -498,7 +522,7 @@ export default function TaskAllocationDesk({
                 Reallocate to Advisor or Central Ops:
               </label>
               <div className="space-y-2">
-                {teamMembers.map(member => (
+                {getReallocationMembers(handoffModalTask).map(member => (
                   <button
                     key={member.id}
                     onClick={() => {
@@ -520,6 +544,11 @@ export default function TaskAllocationDesk({
                     </span>
                   </button>
                 ))}
+                {getReallocationMembers(handoffModalTask).length === 0 && (
+                  <div className="p-2.5 rounded-lg border border-slate-800 bg-slate-950 text-xs text-slate-500">
+                    No valid backend assignee is available for this task.
+                  </div>
+                )}
               </div>
             </div>
 

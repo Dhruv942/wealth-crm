@@ -1,8 +1,8 @@
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ||
-  "https://wealth-backend-sb2a.vercel.app/api/v1";
+  "http://localhost:3000/api/v1";
 
-const DEMO_CREDENTIALS = {
+export const DEMO_CREDENTIALS = {
   "rm-1": { email: "rahul@firm.com", password: "password" },
   "rm-2": { email: "priya@firm.com", password: "password" },
   "rm-3": { email: "manager@k2wealth.com", password: "password" },
@@ -14,7 +14,10 @@ async function request(path, { token, ...options } = {}) {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...options,
     headers: {
-      "content-type": "application/json",
+      // Only send content-type when there's actually a body — this backend
+      // 400s on "Body cannot be empty when content-type is set to 'application/json'"
+      // for bodyless POSTs like /synthesize and /confirm.
+      ...(options.body ? { "content-type": "application/json" } : {}),
       ...(token ? { authorization: `Bearer ${token}` } : {}),
       ...(options.headers || {}),
     },
@@ -40,6 +43,18 @@ export async function loginDemoRole(roleId) {
 
 export async function fetchBootstrap(token) {
   return request("/bootstrap", { token });
+}
+
+export async function fetchClientDossier(token, clientId) {
+  return request(`/clients/${clientId}`, { token });
+}
+
+export async function fetchClientPortfolio(token, clientId) {
+  return request(`/clients/${clientId}/portfolio`, { token });
+}
+
+export async function fetchCopilotAlerts(token, clientId) {
+  return request(`/clients/${clientId}/copilot-alerts`, { token });
 }
 
 export async function updateTaskStatus(token, taskId, status) {

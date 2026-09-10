@@ -5,27 +5,22 @@ import {
   Lock, Eye, ShieldAlert, Layers, Search, X, AlertTriangle,
   Wallet, FileWarning, BookOpen, ChevronRight, FlaskConical
 } from 'lucide-react';
+import LoginGate from './components/LoginGate';
 import TaskAllocationDesk from './components/TaskAllocationDesk';
 import RMCopilotDossier from './components/RMCopilotDossier';
 import AutoCRMUpdate from './components/AutoCRMUpdate';
 import PartnerOversight from './components/PartnerOversight';
 import {
-  CLIENT_PROFILES as LOCAL_CLIENT_PROFILES,
-  DEMO_CALL_SCENARIOS as LOCAL_DEMO_CALL_SCENARIOS,
-  FIRM_METRICS as LOCAL_FIRM_METRICS,
-  HOUSE_VIEWS as LOCAL_HOUSE_VIEWS,
-  INITIAL_TASKS as LOCAL_INITIAL_TASKS,
-  PLAYBOOK_LIBRARY as LOCAL_PLAYBOOK_LIBRARY,
   TEAM_MEMBERS as LOCAL_TEAM_MEMBERS
 } from './mockData/wealthData';
 import {
   assignTask,
+  DEMO_CREDENTIALS,
   fetchBootstrap,
   loginDemoRole,
   updateTaskStatus
 } from './services/api';
 import {
-  addGeneratedTasksOnce,
   getClientIdleSavingsLakhs
 } from './utils/frontendState';
 
@@ -36,31 +31,10 @@ const toRoleId = (user) => {
   return user.id;
 };
 
-const mergeById = (fallback, incoming = []) => {
-  const incomingById = new Map(incoming.map(item => [item.id, item]));
-  const merged = fallback.map(item => ({ ...item, ...(incomingById.get(item.id) || {}) }));
-  incoming.forEach(item => {
-    if (!fallback.some(existing => existing.id === item.id)) merged.push(item);
-  });
-  return merged;
-};
-
-const enrichClients = (incoming = []) => {
-  if (incoming.length === 0) return LOCAL_CLIENT_PROFILES;
-  const incomingById = new Map(incoming.map(item => [item.id, item]));
-  return incoming.map(client => {
-    const fallback = LOCAL_CLIENT_PROFILES.find(item => item.id === client.id) || {};
-    return {
-      ...fallback,
-      ...client,
-      assignedRMId: client.assignedRMId || client.assignedRmId || fallback.assignedRMId
-    };
-  });
-};
-
-const normalizeAuditLog = (log) => {
-  const client = LOCAL_CLIENT_PROFILES.find(c => c.id === log.clientId);
-  const actor = LOCAL_TEAM_MEMBERS.find(m => m.id === log.actorUserId);
+const normalizeAuditLog = (log, { clients = [], teamMembers = [] } = {}) => {
+  const client = clients.find(item => item.id === log.clientId);
+  const advisor = teamMembers.find(item => item.id === log.actorUserId);
+  const status = log.complianceStatus || log.compliance_status || 'ok';
   return {
     timestamp: log.timestamp || (log.createdAt ? new Date(log.createdAt).toLocaleString('en-IN', {
       timeZone: 'Asia/Kolkata',
@@ -73,26 +47,29 @@ const normalizeAuditLog = (log) => {
     }).replace(',', '') + ' IST' : 'Live'),
     event: log.event || 'Activity',
     client: log.client || client?.name || log.clientId || 'Internal Desk',
-    advisor: log.advisor || actor?.name || log.actorUserId || 'System',
+    advisor: log.advisor || advisor?.name || log.actorUserId || 'System',
     detail: log.detail || '',
-    complianceStatus: log.complianceStatus || log.compliance_status || 'ok'
+    complianceStatus: status.toUpperCase()
   };
 };
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('allocation');
-  const [tasks, setTasks] = useState(LOCAL_INITIAL_TASKS);
-  const [teamMembers, setTeamMembers] = useState(LOCAL_TEAM_MEMBERS);
-  const [clientProfiles, setClientProfiles] = useState(LOCAL_CLIENT_PROFILES);
-  const [demoCallScenarios, setDemoCallScenarios] = useState(LOCAL_DEMO_CALL_SCENARIOS);
-  const [firmMetrics, setFirmMetrics] = useState(LOCAL_FIRM_METRICS);
-  const [houseViews, setHouseViews] = useState(LOCAL_HOUSE_VIEWS);
-  const [playbookLibrary, setPlaybookLibrary] = useState(LOCAL_PLAYBOOK_LIBRARY);
+  const [tasks, setTasks] = useState([]);
+  const [teamMembers, setTeamMembers] = useState([]);
+  const [clientProfiles, setClientProfiles] = useState([]);
+  const [demoCallScenarios, setDemoCallScenarios] = useState([]);
+  const [firmMetrics, setFirmMetrics] = useState({});
+  const [houseViews, setHouseViews] = useState([]);
+  const [playbookLibrary, setPlaybookLibrary] = useState([]);
   const [auditLogs, setAuditLogs] = useState([]);
   const [apiToken, setApiToken] = useState(null);
   const [apiStatus, setApiStatus] = useState('connecting');
-  const [currentRM, setCurrentRM] = useState(LOCAL_TEAM_MEMBERS[0]); // Defaults to Rahul Sharma (RM)
-  const [selectedClientId, setSelectedClientId] = useState('cli-1');
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [loginError, setLoginError] = useState(null);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [currentRM, setCurrentRM] = useState(LOCAL_TEAM_MEMBERS[0]); // Login screen default only; dashboard user comes from backend bootstrap.
+  const [selectedClientId, setSelectedClientId] = useState(null);
   const [toastMessage, setToastMessage] = useState(null);
   const [currentTime, setCurrentTime] = useState('');
   const [bellOpen, setBellOpen] = useState(false);
@@ -105,17 +82,29 @@ export default function App() {
   const isManagerOrOps = currentRM.level === 'Manager' || currentRM.level === 'Operations';
 
   const applyBootstrap = (bootstrap, roleId) => {
-    const nextTeamMembers = mergeById(LOCAL_TEAM_MEMBERS, bootstrap.teamMembers || []);
-    const nextClients = enrichClients(bootstrap.clientProfiles || []);
+    const nextTeamMembers = bootstrap.teamMembers || [];
+    const nextClients = (bootstrap.clientProfiles || []).map(client => ({
+      ...client,
+      assignedRMId: client.assignedRMId || client.assignedRmId
+    }));
+    const nextCurrentRM = nextTeamMembers.find(m => m.id === roleId) || nextTeamMembers[0];
     setTeamMembers(nextTeamMembers);
     setClientProfiles(nextClients);
-    setTasks(bootstrap.tasks || LOCAL_INITIAL_TASKS);
-    setDemoCallScenarios(bootstrap.demoCallScenarios || LOCAL_DEMO_CALL_SCENARIOS);
-    setFirmMetrics(bootstrap.firmMetrics || LOCAL_FIRM_METRICS);
-    setHouseViews(bootstrap.houseViews || LOCAL_HOUSE_VIEWS);
-    setPlaybookLibrary(bootstrap.playbookLibrary || LOCAL_PLAYBOOK_LIBRARY);
-    setAuditLogs((bootstrap.auditLogs || []).map(normalizeAuditLog));
-    setCurrentRM(nextTeamMembers.find(m => m.id === roleId) || LOCAL_TEAM_MEMBERS.find(m => m.id === roleId) || nextTeamMembers[0]);
+    setTasks(bootstrap.tasks || []);
+    setDemoCallScenarios(bootstrap.demoCallScenarios || []);
+    setFirmMetrics(bootstrap.firmMetrics || {});
+    setHouseViews(bootstrap.houseViews || []);
+    setPlaybookLibrary(bootstrap.playbookLibrary || []);
+    setAuditLogs((bootstrap.auditLogs || []).map(log => normalizeAuditLog(log, {
+      clients: nextClients,
+      teamMembers: nextTeamMembers
+    })));
+    setCurrentRM(nextCurrentRM);
+    setSelectedClientId(prev => {
+      if (prev && nextClients.some(client => client.id === prev)) return prev;
+      const isPrivileged = nextCurrentRM?.level === 'Manager' || nextCurrentRM?.level === 'Operations';
+      return (isPrivileged ? nextClients[0]?.id : nextClients.find(client => client.assignedRMId === nextCurrentRM?.id)?.id) || nextClients[0]?.id || null;
+    });
   };
 
   const loadBackendForRole = async (roleId, { silent = false } = {}) => {
@@ -127,9 +116,26 @@ export default function App() {
       applyBootstrap(bootstrap, toRoleId(login.user));
       setApiStatus('connected');
       if (!silent) showToast(`Backend connected as ${login.user.name}`);
+      return { success: true, user: login.user };
     } catch (error) {
       setApiStatus('offline');
-      if (!silent) showToast(`Backend unavailable, using local demo data. ${error.message}`);
+      if (!silent) showToast(`Backend unavailable. ${error.message}`);
+      return { success: false, error };
+    }
+  };
+
+  // Real backend login, triggered from the login gate — every role card signs in
+  // with its own hardcoded demo credentials via POST /auth/login before entering the app.
+  const handleLogin = async (roleId) => {
+    setIsLoggingIn(true);
+    setLoginError(null);
+    const result = await loadBackendForRole(roleId, { silent: true });
+    setIsLoggingIn(false);
+    if (result.success) {
+      setIsAuthenticated(true);
+      showToast(`Logged in as ${result.user.name}`);
+    } else {
+      setLoginError(result.error.message);
     }
   };
 
@@ -162,10 +168,6 @@ export default function App() {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
-
-  useEffect(() => {
-    loadBackendForRole('rm-1', { silent: true });
   }, []);
 
   const paletteClientResults = paletteQuery
@@ -209,24 +211,22 @@ export default function App() {
     return () => clearInterval(interval);
   }, []);
 
-  // When changing role persona, ensure selected client is one of their assigned clients
-  const handleSwitchRM = (rmId) => {
-    const found = teamMembers.find(m => m.id === rmId) || LOCAL_TEAM_MEMBERS.find(m => m.id === rmId);
-    if (found) {
-      setCurrentRM(found);
-      loadBackendForRole(rmId, { silent: true });
-      const isManager = found.level === 'Manager' || found.level === 'Operations';
-      if (!isManager) {
-        const theirClients = clientProfiles.filter(c => c.assignedRMId === found.id);
-        if (theirClients.length > 0) {
-          setSelectedClientId(theirClients[0].id);
-        }
-        if (activeTab === 'oversight') {
-          setActiveTab('allocation');
-        }
-      }
-      showToast(`Switched view to ${found.name} (${found.level === 'Manager' ? 'Manager View' : 'RM View'})`);
-    }
+  // Switching role signs out back to the login form — the next role's dashboard
+  // only opens after a fresh backend login, per product requirement.
+  const handleLogout = () => {
+    setIsAuthenticated(false);
+    setApiToken(null);
+    setApiStatus('connecting');
+    setLoginError(null);
+    setTasks([]);
+    setTeamMembers([]);
+    setClientProfiles([]);
+    setDemoCallScenarios([]);
+    setFirmMetrics({});
+    setHouseViews([]);
+    setPlaybookLibrary([]);
+    setAuditLogs([]);
+    setSelectedClientId(null);
   };
 
   const showToast = (message) => {
@@ -240,54 +240,50 @@ export default function App() {
   const handleRetryConnection = () => loadBackendForRole(currentRM.id);
 
   const handleUpdateTaskStatus = async (taskId, nextStatus) => {
-    setTasks(prev => prev.map(t => {
-      if (t.id === taskId) {
-        return { ...t, status: nextStatus };
-      }
-      return t;
-    }));
-    if (apiToken) {
-      try {
-        await updateTaskStatus(apiToken, taskId, nextStatus);
-        await refreshCurrentRole();
-      } catch (error) {
-        showToast(`Backend task update failed: ${error.message}`);
-      }
+    if (!apiToken) {
+      showToast('Backend session is required before updating tasks.');
+      return;
     }
-    showToast(`Task status advanced to "${nextStatus.replace('_', ' ')}"!`);
+    try {
+      await updateTaskStatus(apiToken, taskId, nextStatus);
+      await refreshCurrentRole();
+      showToast(`Task status advanced to "${nextStatus.replace('_', ' ')}"!`);
+    } catch (error) {
+      showToast(`Backend task update failed: ${error.message}`);
+    }
   };
 
   const handleReassignTask = async (taskId, newAssigneeId, newAssigneeName) => {
-    setTasks(prev => prev.map(t => {
-      if (t.id === taskId) {
-        return { 
-          ...t, 
-          assignedTo: newAssigneeId, 
-          assignedToName: newAssigneeName,
-          status: newAssigneeId.startsWith('ops') ? 'pending_ops' : t.status 
-        };
-      }
-      return t;
-    }));
-    if (apiToken) {
-      try {
-        await assignTask(apiToken, taskId, newAssigneeId);
-        await refreshCurrentRole();
-      } catch (error) {
-        showToast(`Backend reassignment failed: ${error.message}`);
-      }
+    if (!apiToken) {
+      showToast('Backend session is required before reassigning tasks.');
+      return;
     }
-    showToast(`Task successfully reallocated to ${newAssigneeName}!`);
-  };
-
-  const handleTasksGenerated = (newTasks) => {
-    setTasks(prev => addGeneratedTasksOnce(prev, newTasks));
+    try {
+      await assignTask(apiToken, taskId, newAssigneeId);
+      await refreshCurrentRole();
+      showToast(`Task successfully reallocated to ${newAssigneeName}!`);
+    } catch (error) {
+      showToast(`Backend reassignment failed: ${error.message}`);
+    }
   };
 
   // Task count badge for current user
   const userTaskCount = isManagerOrOps
     ? tasks.length
     : tasks.filter(t => t.assignedTo === currentRM.id).length;
+
+  if (!isAuthenticated) {
+    return (
+      <LoginGate
+        roles={LOCAL_TEAM_MEMBERS}
+        credentialsByRole={DEMO_CREDENTIALS}
+        defaultRoleId={currentRM.id}
+        isLoggingIn={isLoggingIn}
+        error={loginError}
+        onLogin={handleLogin}
+      />
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col">
@@ -329,7 +325,7 @@ export default function App() {
                   ? 'Connected to K2 WealthDesk backend'
                   : apiStatus === 'connecting'
                     ? 'Connecting to backend...'
-                    : 'Backend unreachable — using local demo data. Click to retry.'
+                    : 'Backend unreachable. Click to retry.'
               }
               className={`hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] font-semibold transition-colors ${
                 apiStatus === 'connected'
@@ -408,22 +404,21 @@ export default function App() {
               )}
             </div>
 
-            {/* Role-Based Persona Selector */}
-            <div className="flex items-center gap-2 bg-slate-900 border border-slate-800 hover:border-slate-700 rounded-lg p-1.5 transition-colors">
-              <div className="flex items-center gap-1.5 text-xs text-slate-400 pl-1 font-medium hidden sm:flex">
+            {/* Signed-in identity + role switch — switching role signs out and returns to the login form */}
+            <div className="flex items-center gap-2 bg-slate-900 border border-slate-800 rounded-lg p-1.5">
+              <div className="flex items-center gap-1.5 text-xs pl-1 font-medium">
                 <Lock className="w-3 h-3 text-emerald-400" />
-                <span>Simulate View:</span>
+                <span className="text-slate-200 font-semibold hidden sm:inline">{currentRM.name}</span>
+                <span className="text-slate-500 hidden sm:inline">
+                  ({isManagerOrOps ? 'Manager View' : 'RM View'})
+                </span>
               </div>
-              <select
-                value={currentRM.id}
-                onChange={(e) => handleSwitchRM(e.target.value)}
-                className="bg-slate-950 border border-slate-800 text-xs rounded-md px-2.5 py-1 text-slate-200 font-semibold focus:outline-none focus:border-cyan-500 cursor-pointer"
+              <button
+                onClick={handleLogout}
+                className="text-xs px-2.5 py-1 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-semibold transition-colors"
               >
-                <option value="rm-1">Rahul Sharma — RM View (Private Wealth)</option>
-                <option value="rm-2">Priya Nair — RM View (Affluent Banking)</option>
-                <option value="rm-3">Vikram Mehta — Cluster Head (Manager View)</option>
-                <option value="ops-1">Central Ops & Compliance — Firm Ops Queue</option>
-              </select>
+                Switch Role
+              </button>
             </div>
           </div>
         </div>
@@ -506,6 +501,7 @@ export default function App() {
             currentRM={currentRM}
             clientProfiles={clientProfiles}
             firmMetrics={firmMetrics}
+            apiToken={apiToken}
             selectedClientId={selectedClientId}
             onSelectClient={setSelectedClientId}
             onShowToast={showToast}
@@ -527,7 +523,6 @@ export default function App() {
             onNavigateToAllocation={() => setActiveTab('allocation')}
             selectedClientId={selectedClientId}
             onSelectClient={setSelectedClientId}
-            onTasksGenerated={handleTasksGenerated}
             onShowToast={showToast}
           />
         </section>

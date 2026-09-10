@@ -3,15 +3,16 @@ import {
   Sparkles, ShieldCheck, AlertTriangle, TrendingUp, TrendingDown,
   HelpCircle, MessageSquare, PhoneCall, Copy, Check, ChevronDown,
   ChevronUp, PieChart, ArrowUpRight, Clock, User, Landmark,
-  FileText, Shield, DollarSign, Lock, Gift, CalendarClock
+  FileText, Shield, DollarSign, Lock, Gift, CalendarClock, RefreshCw
 } from 'lucide-react';
-import { CLIENT_PROFILES as LOCAL_CLIENT_PROFILES, FIRM_METRICS as LOCAL_FIRM_METRICS } from '../mockData/wealthData';
+import { fetchClientDossier, fetchClientPortfolio, fetchCopilotAlerts } from '../services/api';
 import { copyTextToClipboard } from '../utils/frontendState';
 
 export default function RMCopilotDossier({ 
   currentRM,
-  clientProfiles = LOCAL_CLIENT_PROFILES,
-  firmMetrics = LOCAL_FIRM_METRICS,
+  clientProfiles = [],
+  firmMetrics = {},
+  apiToken,
   selectedClientId, 
   onSelectClient, 
   onShowToast,
@@ -19,6 +20,11 @@ export default function RMCopilotDossier({
 }) {
   const [copiedIndex, setCopiedIndex] = useState(null);
   const [expandedObjection, setExpandedObjection] = useState(0);
+  const [clientDetail, setClientDetail] = useState(null);
+  const [portfolio, setPortfolio] = useState(null);
+  const [coPilotAlerts, setCoPilotAlerts] = useState([]);
+  const [isLoadingClientDetail, setIsLoadingClientDetail] = useState(false);
+  const [clientDetailError, setClientDetailError] = useState(null);
 
   const isPartnerOrOps = currentRM.level === 'Manager' || currentRM.level === 'Operations';
 
@@ -29,13 +35,101 @@ export default function RMCopilotDossier({
     : clientProfiles.filter(c => c.assignedRMId === currentRM.id);
 
   // If current selection is not accessible by this RM, fallback to first accessible client
-  const client = accessibleClients.find(c => c.id === selectedClientId) || accessibleClients[0] || clientProfiles[0] || LOCAL_CLIENT_PROFILES[0];
+  const baseClient = accessibleClients.find(c => c.id === selectedClientId) || accessibleClients[0] || clientProfiles[0] || null;
+
+  const toAllocation = (allocation) => ({
+    equity: allocation?.equityPct ?? 0,
+    debt: allocation?.debtPct ?? 0,
+    alternates: allocation?.alternatesPct ?? 0
+  });
+
+  const currentAllocation = toAllocation(portfolio?.currentAllocation);
+  const mandateAllocation = toAllocation(portfolio?.targetAllocation);
+  const portfolioHighlights = (portfolio?.holdings || []).map(holding => ({
+    name: holding.name,
+    type: holding.assetType,
+    value: holding.valueDisplay,
+    returns: holding.returnDisplay || ''
+  }));
+  const clientContextNotes = (clientDetail?.contextNotes || []).map(note => note.note).join(' ');
+  const normalizedAlerts = coPilotAlerts.map(alert => ({
+    ...alert,
+    severity: (alert.severity || '').toLowerCase(),
+    description: alert.description || alert.detail || ''
+  }));
+  const talkingPoints = [
+    portfolio?.idleCash?.description,
+    portfolio?.taxHarvestingOpportunity?.description,
+    portfolio?.currentAllocation && portfolio?.targetAllocation
+      ? `Review allocation: equity ${currentAllocation.equity}% vs target ${mandateAllocation.equity}%, debt ${currentAllocation.debt}% vs target ${mandateAllocation.debt}%.`
+      : null,
+    normalizedAlerts[0]?.description,
+  ].filter(Boolean);
+  const objectionDefense = [
+    {
+      question: 'Why are you recommending this next step?',
+      answer: portfolio?.idleCash?.description || normalizedAlerts[0]?.description || 'Use the backend portfolio snapshot and approved house view before making a recommendation.'
+    },
+    {
+      question: 'Is this aligned to my risk profile?',
+      answer: `The client risk profile is ${baseClient?.riskCategory || 'not available'}; verify any execution against the recorded mandate before placing orders.`
+    }
+  ];
+  const client = baseClient ? {
+    ...baseClient,
+    ...(clientDetail || {}),
+    assignedRMId: baseClient.assignedRMId || baseClient.assignedRmId,
+    aumDisplay: baseClient.aumDisplay || (baseClient.aumNumeric ? `₹${(baseClient.aumNumeric / 10000000).toFixed(2)} Cr` : '—'),
+    currentAllocation,
+    mandateAllocation,
+    portfolioHighlights,
+    clientContextNotes,
+    coPilotAlerts: normalizedAlerts,
+    relationshipMoments: clientDetail?.relationshipMoments || [],
+    idleSavings: portfolio?.idleCash?.title || 'No backend idle-cash flag',
+    idleSavingsRate: portfolio?.idleCash?.description || 'No idle-cash opportunity returned',
+    taxHarvestingOpportunity: portfolio?.taxHarvestingOpportunity?.title || 'No backend tax flag',
+    talkingPoints,
+    objectionDefense
+  } : null;
 
   useEffect(() => {
-    if (client && client.id !== selectedClientId) {
-      onSelectClient(client.id);
+    if (baseClient && baseClient.id !== selectedClientId) {
+      onSelectClient(baseClient.id);
     }
-  }, [currentRM.id]);
+  }, [currentRM.id, baseClient?.id, selectedClientId, onSelectClient]);
+
+  useEffect(() => {
+    if (!apiToken || !baseClient?.id) return;
+    let ignore = false;
+    setIsLoadingClientDetail(true);
+    setClientDetailError(null);
+    setClientDetail(null);
+    setPortfolio(null);
+    setCoPilotAlerts([]);
+    Promise.all([
+      fetchClientDossier(apiToken, baseClient.id),
+      fetchClientPortfolio(apiToken, baseClient.id),
+      fetchCopilotAlerts(apiToken, baseClient.id)
+    ]).then(([nextDetail, nextPortfolio, nextAlerts]) => {
+      if (ignore) return;
+      setClientDetail(nextDetail);
+      setPortfolio(nextPortfolio);
+      setCoPilotAlerts(nextAlerts || []);
+    }).catch(error => {
+      if (ignore) return;
+      setClientDetail(null);
+      setPortfolio(null);
+      setCoPilotAlerts([]);
+      setClientDetailError(error.message);
+      onShowToast?.(`Client dossier failed to load: ${error.message}`);
+    }).finally(() => {
+      if (!ignore) setIsLoadingClientDetail(false);
+    });
+    return () => {
+      ignore = true;
+    };
+  }, [apiToken, baseClient?.id]);
 
   const handleCopyTalkingPoints = async () => {
     const text = client.talkingPoints.map((tp, i) => `${i + 1}. ${tp}`).join('\n');
@@ -49,32 +143,66 @@ export default function RMCopilotDossier({
     }
   };
 
+  const renderClientSelector = () => (
+    <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-3 flex items-center gap-3 overflow-x-auto">
+      <div className="flex items-center gap-2 text-xs font-semibold text-slate-400 uppercase tracking-wider shrink-0">
+        <User className="w-3.5 h-3.5 text-cyan-400" />
+        Client Dossier:
+      </div>
+
+      <select
+        value={client.id}
+        onChange={(e) => onSelectClient(e.target.value)}
+        className="bg-slate-950 border border-slate-800 text-xs rounded-lg px-3 py-1.5 text-slate-200 font-semibold focus:outline-none focus:border-cyan-500 cursor-pointer"
+      >
+        <option disabled>
+          {isPartnerOrOps
+            ? `- ${accessibleClients.length} of ${firmMetrics.activeClients || accessibleClients.length} firm-wide -`
+            : `- ${accessibleClients.length} of ${currentRM.clientsCount} in book -`}
+        </option>
+        {accessibleClients.map(c => (
+          <option key={c.id} value={c.id}>
+            {c.name} ({c.aumDisplay})
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+
+  if (!client) {
+    return (
+      <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 text-sm text-slate-400">
+        No client data was returned by the backend for this role.
+      </div>
+    );
+  }
+
+  if (isLoadingClientDetail) {
+    return (
+      <div className="space-y-6">
+        {renderClientSelector()}
+        <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 text-sm text-slate-300 flex items-center gap-3">
+          <RefreshCw className="w-4 h-4 animate-spin text-cyan-400" />
+          <span>Loading backend client dossier...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (clientDetailError) {
+    return (
+      <div className="space-y-6">
+        {renderClientSelector()}
+        <div className="bg-rose-950/30 border border-rose-800 rounded-xl p-6 text-sm text-rose-200">
+          Backend client dossier failed to load: {clientDetailError}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
-      {/* Client Selector */}
-      <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-3 flex items-center gap-3 overflow-x-auto">
-        <div className="flex items-center gap-2 text-xs font-semibold text-slate-400 uppercase tracking-wider shrink-0">
-          <User className="w-3.5 h-3.5 text-cyan-400" />
-          Client Dossier:
-        </div>
-
-        <select
-          value={client.id}
-          onChange={(e) => onSelectClient(e.target.value)}
-          className="bg-slate-950 border border-slate-800 text-xs rounded-lg px-3 py-1.5 text-slate-200 font-semibold focus:outline-none focus:border-cyan-500 cursor-pointer"
-        >
-          <option disabled>
-            {isPartnerOrOps
-              ? `— ${accessibleClients.length} of ${firmMetrics.activeClients} firm-wide (demo) —`
-              : `— ${accessibleClients.length} of ${currentRM.clientsCount} in book (demo) —`}
-          </option>
-          {accessibleClients.map(c => (
-            <option key={c.id} value={c.id}>
-              {c.name} ({c.aumDisplay})
-            </option>
-          ))}
-        </select>
-      </div>
+      {renderClientSelector()}
 
       {/* Main Client Profile Header */}
       <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-sm">

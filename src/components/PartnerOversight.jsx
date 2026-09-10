@@ -4,28 +4,25 @@ import {
   Clock, CheckCircle2, ArrowRight, ShieldAlert, Zap, BarChart2,
   FileCheck, ExternalLink, HelpCircle, GraduationCap, FlaskConical
 } from 'lucide-react';
-import {
-  TEAM_MEMBERS as LOCAL_TEAM_MEMBERS,
-  FIRM_METRICS as LOCAL_FIRM_METRICS,
-  CLIENT_PROFILES as LOCAL_CLIENT_PROFILES,
-  DEMO_CALL_SCENARIOS as LOCAL_DEMO_CALL_SCENARIOS
-} from '../mockData/wealthData';
 
-// Risk-heatmap helpers — each derived from fields already on CLIENT_PROFILES, not new invented scores
 function getAllocationDriftSeverity(client) {
   const dims = ['equity', 'debt', 'alternates'];
-  const maxDrift = Math.max(...dims.map(d => Math.abs((client.currentAllocation[d] || 0) - (client.mandateAllocation[d] || 0))));
+  const current = client.currentAllocation;
+  const mandate = client.mandateAllocation;
+  if (!current || !mandate) return { level: 'low', label: 'Not loaded' };
+  const maxDrift = Math.max(...dims.map(d => Math.abs((current[d] || 0) - (mandate[d] || 0))));
   if (maxDrift >= 12) return { level: 'high', label: `${maxDrift}pt drift` };
   if (maxDrift >= 5) return { level: 'medium', label: `${maxDrift}pt drift` };
   return { level: 'low', label: `${maxDrift}pt drift` };
 }
 
 function getIdleCashSeverity(client) {
-  const match = (client.idleSavings || '').match(/([\d.]+)\s*Lakhs?/i);
-  const lakhs = match ? parseFloat(match[1]) : 0;
-  if (lakhs >= 40) return { level: 'high', label: client.idleSavings };
-  if (lakhs >= 20) return { level: 'medium', label: client.idleSavings };
-  return { level: 'low', label: client.idleSavings };
+  const amount = client.idleCashAmountNumeric || 0;
+  const label = client.idleSavings || client.idleCashLabel || 'Not loaded';
+  const lakhs = amount ? amount / 100000 : parseFloat((label.match(/([\d.]+)\s*Lakhs?/i) || [])[1] || '0');
+  if (lakhs >= 40) return { level: 'high', label };
+  if (lakhs >= 20) return { level: 'medium', label };
+  return { level: 'low', label };
 }
 
 function getKycSeverity(client) {
@@ -43,10 +40,10 @@ const HEATMAP_COLORS = {
 
 export default function PartnerOversight({
   tasks,
-  teamMembers = LOCAL_TEAM_MEMBERS,
-  clientProfiles = LOCAL_CLIENT_PROFILES,
-  demoCallScenarios = LOCAL_DEMO_CALL_SCENARIOS,
-  firmMetrics = LOCAL_FIRM_METRICS,
+  teamMembers = [],
+  clientProfiles = [],
+  demoCallScenarios = [],
+  firmMetrics = {},
   auditLogs = []
 }) {
   // Derive branch status from the same data shown in the capacity matrix
@@ -163,7 +160,7 @@ export default function PartnerOversight({
             </thead>
             <tbody className="divide-y divide-slate-800/60">
               {teamMembers.map(member => {
-                const memberTasks = tasks.filter(t => t.assignedTo === member.id);
+                const memberTasks = tasks.filter(t => t.assignedTo === member.id && t.status !== 'completed');
                 return (
                   <tr key={member.id} className="hover:bg-slate-950/50 transition-colors">
                     <td className="py-3 px-4">
@@ -322,7 +319,11 @@ export default function PartnerOversight({
         </div>
 
         <div className="space-y-2.5">
-          {auditLogs.map((log, idx) => (
+          {auditLogs.length === 0 ? (
+            <div className="p-3.5 rounded-lg bg-slate-950 border border-slate-800 text-xs text-slate-500">
+              No backend audit events are available for this manager scope yet.
+            </div>
+          ) : auditLogs.map((log, idx) => (
             <div key={idx} className="p-3.5 rounded-lg bg-slate-950 border border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs">
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
