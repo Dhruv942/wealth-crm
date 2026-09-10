@@ -53,6 +53,13 @@ const normalizeAuditLog = (log, { clients = [], teamMembers = [] } = {}) => {
   };
 };
 
+const normalizeTask = (task) => ({
+  ...task,
+  assignedTo: task.assignedTo || task.assignedToUserId,
+  dueDate: task.dueDate || task.slaDueAt,
+  slaCountdown: task.slaCountdown || (task.slaStatus === 'urgent' ? 'urgent' : '')
+});
+
 export default function App() {
   const [activeTab, setActiveTab] = useState('allocation');
   const [tasks, setTasks] = useState([]);
@@ -90,7 +97,7 @@ export default function App() {
     const nextCurrentRM = nextTeamMembers.find(m => m.id === roleId) || nextTeamMembers[0];
     setTeamMembers(nextTeamMembers);
     setClientProfiles(nextClients);
-    setTasks(bootstrap.tasks || []);
+    setTasks((bootstrap.tasks || []).map(normalizeTask));
     setDemoCallScenarios(bootstrap.demoCallScenarios || []);
     setFirmMetrics(bootstrap.firmMetrics || {});
     setHouseViews(bootstrap.houseViews || []);
@@ -236,7 +243,19 @@ export default function App() {
     }, 3500);
   };
 
-  const refreshCurrentRole = () => loadBackendForRole(currentRM.id, { silent: true });
+  const refreshCurrentRole = async () => {
+    if (!apiToken) return { success: false, error: new Error('Missing backend session') };
+    try {
+      setApiStatus('connecting');
+      const bootstrap = await fetchBootstrap(apiToken);
+      applyBootstrap(bootstrap, currentRM.id);
+      setApiStatus('connected');
+      return { success: true };
+    } catch (error) {
+      setApiStatus('offline');
+      return { success: false, error };
+    }
+  };
   const handleRetryConnection = () => loadBackendForRole(currentRM.id);
 
   const handleUpdateTaskStatus = async (taskId, nextStatus) => {
@@ -245,8 +264,9 @@ export default function App() {
       return;
     }
     try {
-      await updateTaskStatus(apiToken, taskId, nextStatus);
-      await refreshCurrentRole();
+      const updated = await updateTaskStatus(apiToken, taskId, nextStatus);
+      setTasks(prev => prev.map(task => task.id === taskId ? normalizeTask(updated) : task));
+      void refreshCurrentRole();
       showToast(`Task status advanced to "${nextStatus.replace('_', ' ')}"!`);
     } catch (error) {
       showToast(`Backend task update failed: ${error.message}`);
@@ -259,8 +279,9 @@ export default function App() {
       return;
     }
     try {
-      await assignTask(apiToken, taskId, newAssigneeId);
-      await refreshCurrentRole();
+      const updated = await assignTask(apiToken, taskId, newAssigneeId);
+      setTasks(prev => prev.map(task => task.id === taskId ? normalizeTask(updated) : task));
+      void refreshCurrentRole();
       showToast(`Task successfully reallocated to ${newAssigneeName}!`);
     } catch (error) {
       showToast(`Backend reassignment failed: ${error.message}`);
