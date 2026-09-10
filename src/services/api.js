@@ -1,6 +1,6 @@
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ||
-  "http://localhost:3000/api/v1";
+  "https://wealth-backend-update.vercel.app/api/v1";
 
 export const DEMO_CREDENTIALS = {
   "rm-1": { email: "rahul@firm.com", password: "password" },
