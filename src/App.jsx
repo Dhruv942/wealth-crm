@@ -86,7 +86,9 @@ export default function App() {
   const [houseViewQuery, setHouseViewQuery] = useState('');
   const [expandedHouseView, setExpandedHouseView] = useState(null);
 
-  const isManagerOrOps = currentRM.level === 'Manager' || currentRM.level === 'Operations';
+  const isManager = currentRM.level === 'Manager';
+  const isOps = currentRM.level === 'Operations';
+  const isManagerOrOps = isManager || isOps;
 
   const applyBootstrap = (bootstrap, roleId) => {
     const nextTeamMembers = bootstrap.teamMembers || [];
@@ -147,12 +149,16 @@ export default function App() {
   };
 
   // Scope for nudges & search — same isolation rule used everywhere else in the app
-  const accessibleClients = isManagerOrOps
+  const accessibleClients = isOps
+    ? []
+    : isManager
     ? clientProfiles
     : clientProfiles.filter(c => c.assignedRMId === currentRM.id);
-  const accessibleTasks = isManagerOrOps
+  const accessibleTasks = isManager
     ? tasks
-    : tasks.filter(t => t.assignedTo === currentRM.id || t.assignedTo === 'ops-1');
+    : isOps
+      ? tasks.filter(t => t.assignedTo === currentRM.id || t.assignedToName?.includes('Ops'))
+      : tasks.filter(t => t.assignedTo === currentRM.id || t.assignedTo === 'ops-1');
 
   const nearBreachTasks = accessibleTasks.filter(t => t.slaStatus === 'near_breach');
   const pendingReKyc = accessibleClients.filter(c => (c.kycStatus || '').startsWith('Action Required'));
@@ -320,7 +326,7 @@ export default function App() {
               <div className="flex items-center gap-2">
                 <span className="font-extrabold text-base tracking-tight text-white">WealthDesk</span>
                 <span className="text-[10px] uppercase font-bold tracking-widest px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">
-                  {isManagerOrOps ? 'Manager Suite' : 'Advisor Suite'}
+                  {isOps ? 'Central Ops Queue' : isManager ? 'Manager Suite' : 'Advisor Suite'}
                 </span>
               </div>
               <p className="text-[10px] text-slate-400 font-medium hidden sm:block">
@@ -431,7 +437,7 @@ export default function App() {
                 <Lock className="w-3 h-3 text-emerald-400" />
                 <span className="text-slate-200 font-semibold hidden sm:inline">{currentRM.name}</span>
                 <span className="text-slate-500 hidden sm:inline">
-                  ({isManagerOrOps ? 'Manager View' : 'RM View'})
+                  ({isOps ? 'Ops View' : isManager ? 'Manager View' : 'RM View'})
                 </span>
               </div>
               <button
@@ -455,37 +461,41 @@ export default function App() {
             }`}
           >
             <ClipboardList className="w-4 h-4" />
-            <span>{isManagerOrOps ? 'Team Standup Board' : 'My Action Desk'}</span>
+            <span>{isOps ? 'Central Ops Queue' : isManager ? 'Team Standup Board' : 'My Action Desk'}</span>
             <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-cyan-950 text-cyan-200 border border-cyan-700">
               {userTaskCount}
             </span>
           </button>
 
-          <button
-            onClick={() => setActiveTab('copilot')}
-            className={`px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 transition-all shrink-0 ${
-              activeTab === 'copilot'
-                ? 'bg-cyan-600 text-white shadow-md shadow-cyan-600/20'
-                : 'text-slate-400 hover:text-white hover:bg-slate-900'
-            }`}
-          >
-            <Brain className="w-4 h-4 text-amber-400" />
-            <span>Advisor Call Co-Pilot</span>
-          </button>
+          {!isOps && (
+            <>
+              <button
+                onClick={() => setActiveTab('copilot')}
+                className={`px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 transition-all shrink-0 ${
+                  activeTab === 'copilot'
+                    ? 'bg-cyan-600 text-white shadow-md shadow-cyan-600/20'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-900'
+                }`}
+              >
+                <Brain className="w-4 h-4 text-amber-400" />
+                <span>Advisor Call Co-Pilot</span>
+              </button>
 
-          <button
-            onClick={() => setActiveTab('autocrm')}
-            className={`px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 transition-all shrink-0 ${
-              activeTab === 'autocrm'
-                ? 'bg-cyan-600 text-white shadow-md shadow-cyan-600/20'
-                : 'text-slate-400 hover:text-white hover:bg-slate-900'
-            }`}
-          >
-            <RefreshCw className="w-4 h-4 text-emerald-400" />
-            <span>Auto CRM & Meeting Synthesizer</span>
-          </button>
+              <button
+                onClick={() => setActiveTab('autocrm')}
+                className={`px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 transition-all shrink-0 ${
+                  activeTab === 'autocrm'
+                    ? 'bg-cyan-600 text-white shadow-md shadow-cyan-600/20'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-900'
+                }`}
+              >
+                <RefreshCw className="w-4 h-4 text-emerald-400" />
+                <span>Auto CRM & Meeting Synthesizer</span>
+              </button>
+            </>
+          )}
 
-          {isManagerOrOps ? (
+          {isManager ? (
             <button
               onClick={() => setActiveTab('oversight')}
               className={`px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 transition-all shrink-0 ${
@@ -517,7 +527,7 @@ export default function App() {
           />
         </section>
 
-        <section className={activeTab === 'copilot' ? 'block' : 'hidden'}>
+        <section className={activeTab === 'copilot' && !isOps ? 'block' : 'hidden'}>
           <RMCopilotDossier
             currentRM={currentRM}
             clientProfiles={clientProfiles}
@@ -533,7 +543,7 @@ export default function App() {
           />
         </section>
 
-        <section className={activeTab === 'autocrm' ? 'block' : 'hidden'}>
+        <section className={activeTab === 'autocrm' && !isOps ? 'block' : 'hidden'}>
           <AutoCRMUpdate
             currentRM={currentRM}
             clientProfiles={clientProfiles}
@@ -548,7 +558,7 @@ export default function App() {
           />
         </section>
 
-        <section className={activeTab === 'oversight' && isManagerOrOps ? 'block' : 'hidden'}>
+        <section className={activeTab === 'oversight' && isManager ? 'block' : 'hidden'}>
           <PartnerOversight 
             tasks={tasks}
             teamMembers={teamMembers}

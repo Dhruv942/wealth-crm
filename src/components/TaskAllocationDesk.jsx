@@ -20,7 +20,9 @@ export default function TaskAllocationDesk({
   onSelectClientForCopilot,
   onNavigateToCopilot 
 }) {
-  const isManagerOrOps = currentRM.level === 'Manager' || currentRM.level === 'Operations';
+  const isManager = currentRM.level === 'Manager';
+  const isOps = currentRM.level === 'Operations';
+  const isManagerOrOps = isManager || isOps;
   const [selectedRM, setSelectedRM] = useState(isManagerOrOps ? 'all' : currentRM.id);
   const [selectedPriority, setSelectedPriority] = useState('all');
   const [selectedCategory, setSelectedCategory] = useState('all');
@@ -38,7 +40,8 @@ export default function TaskAllocationDesk({
   // Strict role-based task visibility:
   // RMs only see tasks assigned to them OR tasks for their clients with Ops
   const visibleTasks = tasks.filter(task => {
-    if (isManagerOrOps) return true;
+    if (isManager) return true;
+    if (isOps) return task.assignedTo === currentRM.id || task.assignedToName?.includes('Ops');
     return task.assignedTo === currentRM.id || (task.assignedTo.startsWith('ops') && task.assignedToName?.includes('Ops'));
   });
 
@@ -51,7 +54,9 @@ export default function TaskAllocationDesk({
 
   // Next Best Action: rank accessible clients by their most severe open alert,
   // so the RM/manager sees who to call today instead of opening each dossier one by one
-  const nbaAccessibleClients = isManagerOrOps
+  const nbaAccessibleClients = isOps
+    ? []
+    : isManager
     ? clientProfiles
     : clientProfiles.filter(c => c.assignedRMId === currentRM.id);
 
@@ -71,7 +76,7 @@ export default function TaskAllocationDesk({
     : formatIdleCashFromClients(nbaAccessibleClients);
 
   const columns = [
-    { id: 'pending_rm', title: isManagerOrOps ? 'Action Required (RM)' : 'My Action Items', badge: 'bg-amber-500/10 text-amber-400 border-amber-500/20' },
+    { id: 'pending_rm', title: isOps ? 'RM Action / Handback' : isManager ? 'Action Required (RM)' : 'My Action Items', badge: 'bg-amber-500/10 text-amber-400 border-amber-500/20' },
     { id: 'in_progress', title: 'In Progress / Processing', badge: 'bg-blue-500/10 text-blue-400 border-blue-500/20' },
     { id: 'pending_ops', title: 'With Central Ops & KYC', badge: 'bg-fuchsia-500/10 text-fuchsia-400 border-fuchsia-500/20' },
     { id: 'completed', title: 'Completed & Dispatched', badge: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' }
@@ -118,9 +123,10 @@ export default function TaskAllocationDesk({
 
   const getReallocationMembers = (task) => {
     if (!task) return [];
-    if (isManagerOrOps && currentRM.level !== 'Operations') return teamMembers;
+    if (isManager) return teamMembers;
     const client = clientProfiles.find(c => c.id === task.clientId);
     const assignedRmId = client?.assignedRMId || client?.assignedRmId;
+    if (isOps) return teamMembers.filter(member => member.id === assignedRmId);
     return teamMembers.filter(member => member.id === 'ops-1' || member.id === assignedRmId);
   };
 
@@ -137,11 +143,38 @@ export default function TaskAllocationDesk({
     return 'completed';
   };
 
+  const openOpsTasks = visibleTasks.filter(task => task.assignedTo === currentRM.id && task.status !== 'completed');
+  const urgentOpsTasks = openOpsTasks.filter(task => ['Critical', 'Urgent'].includes(task.priority));
+
   return (
     <div className="space-y-6">
       {/* Top Banner: Context-Aware Pulse */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        {isManagerOrOps ? (
+        {isOps ? (
+          <>
+            <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-4 flex flex-col justify-between shadow-sm">
+              <div className="flex items-center justify-between text-slate-400 text-xs font-medium uppercase tracking-wider">
+                <span>Ops Open Items</span>
+                <Building className="w-4 h-4 text-fuchsia-400" />
+              </div>
+              <div className="mt-2">
+                <span className="text-2xl font-bold text-white tracking-tight">{openOpsTasks.length}</span>
+                <span className="text-xs text-fuchsia-300 ml-2 font-medium">Central Ops Queue</span>
+              </div>
+            </div>
+
+            <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-4 flex flex-col justify-between shadow-sm">
+              <div className="flex items-center justify-between text-slate-400 text-xs font-medium uppercase tracking-wider">
+                <span>Urgent Compliance</span>
+                <Clock className="w-4 h-4 text-amber-400" />
+              </div>
+              <div className="mt-2 flex items-baseline gap-2">
+                <span className="text-2xl font-bold text-amber-400 tracking-tight">{urgentOpsTasks.length}</span>
+                <span className="text-xs text-slate-400 font-medium">KYC / Ops priority</span>
+              </div>
+            </div>
+          </>
+        ) : isManager ? (
           <>
             <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-4 flex flex-col justify-between shadow-sm">
               <div className="flex items-center justify-between text-slate-400 text-xs font-medium uppercase tracking-wider">
@@ -200,14 +233,14 @@ export default function TaskAllocationDesk({
 
         <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-4 flex flex-col justify-between shadow-sm">
           <div className="flex items-center justify-between text-slate-400 text-xs font-medium uppercase tracking-wider">
-            <span>Unallocated Idle Cash</span>
+            <span>{isOps ? 'Ops Execution Items' : 'Unallocated Idle Cash'}</span>
             <Sparkles className="w-4 h-4 text-emerald-400" />
           </div>
           <div className="mt-2">
             <span className="text-2xl font-bold text-emerald-400 tracking-tight">
-              {idleCashDisplay}
+              {isOps ? openOpsTasks.length : idleCashDisplay}
             </span>
-            <span className="text-xs text-slate-400 ml-2">Arbitrage Harvest Ready</span>
+            <span className="text-xs text-slate-400 ml-2">{isOps ? 'Assigned to Ops' : 'Arbitrage Harvest Ready'}</span>
           </div>
         </div>
 
@@ -218,10 +251,10 @@ export default function TaskAllocationDesk({
           </div>
           <div className="mt-2">
             <span className="text-sm font-bold text-sky-300 tracking-tight block">
-              {isManagerOrOps ? 'Cluster Head Mode' : 'RM Book Isolation'}
+              {isOps ? 'Central Ops Mode' : isManager ? 'Cluster Head Mode' : 'RM Book Isolation'}
             </span>
             <span className="text-xs text-slate-400">
-              {isManagerOrOps ? 'Full team rebalancing enabled' : 'Peer tasks & clients isolated'}
+              {isOps ? 'Tasks only: KYC, STP, BSE StAR MF, LRS' : isManager ? 'Full team rebalancing enabled' : 'Peer tasks & clients isolated'}
             </span>
           </div>
         </div>
@@ -413,7 +446,7 @@ export default function TaskAllocationDesk({
                           </span>
                         </div>
 
-                        {task.clientId && (
+                        {task.clientId && !isOps && (
                           <button
                             onClick={() => {
                               onSelectClientForCopilot(task.clientId);
@@ -443,9 +476,9 @@ export default function TaskAllocationDesk({
                             <button
                               onClick={() => setHandoffModalTask(task)}
                               className="text-[11px] text-slate-400 hover:text-slate-200 bg-slate-800/70 hover:bg-slate-800 px-2 py-0.5 rounded transition-colors"
-                              title="Reallocate across team"
+                              title={isOps ? 'Hand back to assigned RM' : 'Reallocate across team'}
                             >
-                              Reallocate
+                              {isOps ? 'Hand Back' : 'Reallocate'}
                             </button>
                           ) : (
                             task.assignedTo === currentRM.id && task.status !== 'completed' && (
@@ -501,7 +534,7 @@ export default function TaskAllocationDesk({
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <h3 className="text-sm font-bold text-white flex items-center gap-2">
                 <RefreshCw className="w-4 h-4 text-cyan-400" />
-                Reallocate Task ({currentRM.level === 'Operations' ? 'Ops Desk' : 'Cluster Head Authority'})
+                {isOps ? 'Hand Back Task' : 'Reallocate Task (Cluster Head Authority)'}
               </h3>
               <button 
                 onClick={() => setHandoffModalTask(null)}
@@ -519,7 +552,7 @@ export default function TaskAllocationDesk({
 
             <div>
               <label className="text-xs font-medium text-slate-300 block mb-2">
-                Reallocate to Advisor or Central Ops:
+                {isOps ? 'Hand back to assigned RM:' : 'Reallocate to Advisor or Central Ops:'}
               </label>
               <div className="space-y-2">
                 {getReallocationMembers(handoffModalTask).map(member => (
