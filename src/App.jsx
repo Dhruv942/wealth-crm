@@ -1,58 +1,83 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from "react";
 import {
-  ClipboardList, Brain, RefreshCw, ShieldCheck, Clock,
-  Sparkles, Bell, CheckCircle2, User, ChevronDown, Building,
-  Lock, Eye, ShieldAlert, Layers, Search, X, AlertTriangle,
-  Wallet, FileWarning, BookOpen, ChevronRight, FlaskConical
-} from 'lucide-react';
-import LoginGate from './components/LoginGate';
-import TaskAllocationDesk from './components/TaskAllocationDesk';
-import RMCopilotDossier from './components/RMCopilotDossier';
-import AutoCRMUpdate from './components/AutoCRMUpdate';
-import PartnerOversight from './components/PartnerOversight';
+  ClipboardList,
+  Brain,
+  RefreshCw,
+  ShieldCheck,
+  Clock,
+  Sparkles,
+  Bell,
+  CheckCircle2,
+  User,
+  ChevronDown,
+  Building,
+  Lock,
+  Eye,
+  ShieldAlert,
+  Layers,
+  Search,
+  X,
+  AlertTriangle,
+  Wallet,
+  FileWarning,
+  BookOpen,
+  ChevronRight,
+  FlaskConical,
+} from "lucide-react";
+import LoginGate from "./components/LoginGate";
+import TaskAllocationDesk from "./components/TaskAllocationDesk";
+import RMCopilotDossier from "./components/RMCopilotDossier";
+import AutoCRMUpdate from "./components/AutoCRMUpdate";
+import PartnerOversight from "./components/PartnerOversight";
 import {
   CLIENT_PROFILES as LOCAL_CLIENT_PROFILES,
   DEMO_CALL_SCENARIOS as LOCAL_DEMO_CALL_SCENARIOS,
-  TEAM_MEMBERS as LOCAL_TEAM_MEMBERS
-} from './mockData/wealthData';
+  TEAM_MEMBERS as LOCAL_TEAM_MEMBERS,
+} from "./mockData/wealthData";
 import {
   assignTask,
   DEMO_CREDENTIALS,
   fetchBootstrap,
   loginDemoRole,
-  updateTaskStatus
-} from './services/api';
+  updateTaskStatus,
+} from "./services/api";
 import {
   getClientIdleSavingsLakhs,
-  getVisibleTasksForRole
-} from './utils/frontendState';
+  getVisibleTasksForRole,
+} from "./utils/frontendState";
 
 const toRoleId = (user) => {
-  if (!user) return 'rm-1';
-  if (user.role === 'MANAGER') return 'rm-3';
-  if (user.role === 'OPS') return 'ops-1';
+  if (!user) return "rm-1";
+  if (user.role === "MANAGER") return "rm-3";
+  if (user.role === "OPS") return "ops-1";
   return user.id;
 };
 
 const normalizeAuditLog = (log, { clients = [], teamMembers = [] } = {}) => {
-  const client = clients.find(item => item.id === log.clientId);
-  const advisor = teamMembers.find(item => item.id === log.actorUserId);
-  const status = log.complianceStatus || log.compliance_status || 'ok';
+  const client = clients.find((item) => item.id === log.clientId);
+  const advisor = teamMembers.find((item) => item.id === log.actorUserId);
+  const status = log.complianceStatus || log.compliance_status || "ok";
   return {
-    timestamp: log.timestamp || (log.createdAt ? new Date(log.createdAt).toLocaleString('en-IN', {
-      timeZone: 'Asia/Kolkata',
-      day: '2-digit',
-      month: '2-digit',
-      year: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: false
-    }).replace(',', '') + ' IST' : 'Live'),
-    event: log.event || 'Activity',
-    client: log.client || client?.name || log.clientId || 'Internal Desk',
-    advisor: log.advisor || advisor?.name || log.actorUserId || 'System',
-    detail: log.detail || '',
-    complianceStatus: status.toUpperCase()
+    timestamp:
+      log.timestamp ||
+      (log.createdAt
+        ? new Date(log.createdAt)
+            .toLocaleString("en-IN", {
+              timeZone: "Asia/Kolkata",
+              day: "2-digit",
+              month: "2-digit",
+              year: "2-digit",
+              hour: "2-digit",
+              minute: "2-digit",
+              hour12: false,
+            })
+            .replace(",", "") + " IST"
+        : "Live"),
+    event: log.event || "Activity",
+    client: log.client || client?.name || log.clientId || "Internal Desk",
+    advisor: log.advisor || advisor?.name || log.actorUserId || "System",
+    detail: log.detail || "",
+    complianceStatus: status.toUpperCase(),
   };
 };
 
@@ -60,11 +85,12 @@ const normalizeTask = (task) => ({
   ...task,
   assignedTo: task.assignedTo || task.assignedToUserId,
   dueDate: task.dueDate || task.slaDueAt,
-  slaCountdown: task.slaCountdown || (task.slaStatus === 'urgent' ? 'urgent' : '')
+  slaCountdown:
+    task.slaCountdown || (task.slaStatus === "urgent" ? "urgent" : ""),
 });
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState('allocation');
+  const [activeTab, setActiveTab] = useState("allocation");
   const [tasks, setTasks] = useState([]);
   const [teamMembers, setTeamMembers] = useState([]);
   const [clientProfiles, setClientProfiles] = useState([]);
@@ -74,50 +100,57 @@ export default function App() {
   const [playbookLibrary, setPlaybookLibrary] = useState([]);
   const [auditLogs, setAuditLogs] = useState([]);
   const [apiToken, setApiToken] = useState(null);
-  const [apiStatus, setApiStatus] = useState('connecting');
+  const [apiStatus, setApiStatus] = useState("connecting");
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loginError, setLoginError] = useState(null);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [currentRM, setCurrentRM] = useState(LOCAL_TEAM_MEMBERS[0]); // Login screen default only; dashboard user comes from backend bootstrap.
   const [selectedClientId, setSelectedClientId] = useState(null);
   const [toastMessage, setToastMessage] = useState(null);
-  const [currentTime, setCurrentTime] = useState('');
+  const [currentTime, setCurrentTime] = useState("");
   const [bellOpen, setBellOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
-  const [paletteQuery, setPaletteQuery] = useState('');
+  const [paletteQuery, setPaletteQuery] = useState("");
   const [houseViewOpen, setHouseViewOpen] = useState(false);
-  const [houseViewQuery, setHouseViewQuery] = useState('');
+  const [houseViewQuery, setHouseViewQuery] = useState("");
   const [expandedHouseView, setExpandedHouseView] = useState(null);
 
-  const isManager = currentRM.level === 'Manager';
-  const isOps = currentRM.level === 'Operations';
+  const isManager = currentRM.level === "Manager";
+  const isOps = currentRM.level === "Operations";
   const isManagerOrOps = isManager || isOps;
 
   const applyBootstrap = (bootstrap, roleId) => {
     const nextTeamMembers = bootstrap.teamMembers || [];
-    const localClientsById = new Map(LOCAL_CLIENT_PROFILES.map(client => [client.id, client]));
-    const nextClients = (bootstrap.clientProfiles || []).map(client => ({
+    const localClientsById = new Map(
+      LOCAL_CLIENT_PROFILES.map((client) => [client.id, client]),
+    );
+    const nextClients = (bootstrap.clientProfiles || []).map((client) => ({
       ...(localClientsById.get(client.id) || {}),
       ...client,
-      assignedRMId: client.assignedRMId || client.assignedRmId
+      assignedRMId: client.assignedRMId || client.assignedRmId,
     }));
-    const nextCurrentRM = nextTeamMembers.find(m => m.id === roleId) || nextTeamMembers[0];
-    const visibleClientIds = new Set(nextClients.map(client => client.id));
-    const localScenariosById = new Map(LOCAL_DEMO_CALL_SCENARIOS.map(scenario => [scenario.id, scenario]));
-    const bootstrapScenarios = bootstrap.demoCallScenarios?.length ? bootstrap.demoCallScenarios : LOCAL_DEMO_CALL_SCENARIOS;
+    const nextCurrentRM =
+      nextTeamMembers.find((m) => m.id === roleId) || nextTeamMembers[0];
+    const visibleClientIds = new Set(nextClients.map((client) => client.id));
+    const localScenariosById = new Map(
+      LOCAL_DEMO_CALL_SCENARIOS.map((scenario) => [scenario.id, scenario]),
+    );
+    const bootstrapScenarios = bootstrap.demoCallScenarios?.length
+      ? bootstrap.demoCallScenarios
+      : LOCAL_DEMO_CALL_SCENARIOS;
     const nextDemoCallScenarios = bootstrapScenarios
-      .map(scenario => {
+      .map((scenario) => {
         const localScenario = localScenariosById.get(scenario.id) || {};
         return {
           ...localScenario,
           ...scenario,
           parsedResult: {
             ...(localScenario.parsedResult || {}),
-            ...(scenario.parsedResult || {})
-          }
+            ...(scenario.parsedResult || {}),
+          },
         };
       })
-      .filter(scenario => visibleClientIds.has(scenario.clientId));
+      .filter((scenario) => visibleClientIds.has(scenario.clientId));
     setTeamMembers(nextTeamMembers);
     setClientProfiles(nextClients);
     setTasks((bootstrap.tasks || []).map(normalizeTask));
@@ -125,30 +158,44 @@ export default function App() {
     setFirmMetrics(bootstrap.firmMetrics || {});
     setHouseViews(bootstrap.houseViews || []);
     setPlaybookLibrary(bootstrap.playbookLibrary || []);
-    setAuditLogs((bootstrap.auditLogs || []).map(log => normalizeAuditLog(log, {
-      clients: nextClients,
-      teamMembers: nextTeamMembers
-    })));
+    setAuditLogs(
+      (bootstrap.auditLogs || []).map((log) =>
+        normalizeAuditLog(log, {
+          clients: nextClients,
+          teamMembers: nextTeamMembers,
+        }),
+      ),
+    );
     setCurrentRM(nextCurrentRM);
-    setSelectedClientId(prev => {
-      if (prev && nextClients.some(client => client.id === prev)) return prev;
-      const isPrivileged = nextCurrentRM?.level === 'Manager' || nextCurrentRM?.level === 'Operations';
-      return (isPrivileged ? nextClients[0]?.id : nextClients.find(client => client.assignedRMId === nextCurrentRM?.id)?.id) || nextClients[0]?.id || null;
+    setSelectedClientId((prev) => {
+      if (prev && nextClients.some((client) => client.id === prev)) return prev;
+      const isPrivileged =
+        nextCurrentRM?.level === "Manager" ||
+        nextCurrentRM?.level === "Operations";
+      return (
+        (isPrivileged
+          ? nextClients[0]?.id
+          : nextClients.find(
+              (client) => client.assignedRMId === nextCurrentRM?.id,
+            )?.id) ||
+        nextClients[0]?.id ||
+        null
+      );
     });
   };
 
   const loadBackendForRole = async (roleId, { silent = false } = {}) => {
     try {
-      setApiStatus('connecting');
+      setApiStatus("connecting");
       const login = await loginDemoRole(roleId);
       const bootstrap = await fetchBootstrap(login.accessToken);
       setApiToken(login.accessToken);
       applyBootstrap(bootstrap, toRoleId(login.user));
-      setApiStatus('connected');
+      setApiStatus("connected");
       if (!silent) showToast(`Backend connected as ${login.user.name}`);
       return { success: true, user: login.user };
     } catch (error) {
-      setApiStatus('offline');
+      setApiStatus("offline");
       if (!silent) showToast(`Backend unavailable. ${error.message}`);
       return { success: false, error };
     }
@@ -173,68 +220,79 @@ export default function App() {
   const accessibleClients = isOps
     ? []
     : isManager
-    ? clientProfiles
-    : clientProfiles.filter(c => c.assignedRMId === currentRM.id);
+      ? clientProfiles
+      : clientProfiles.filter((c) => c.assignedRMId === currentRM.id);
   const accessibleTasks = isManager
     ? tasks
     : getVisibleTasksForRole(tasks, clientProfiles, currentRM);
 
-  const nearBreachTasks = accessibleTasks.filter(t => t.slaStatus === 'near_breach');
-  const pendingReKyc = accessibleClients.filter(c => (c.kycStatus || '').startsWith('Action Required'));
+  const nearBreachTasks = accessibleTasks.filter(
+    (t) => t.slaStatus === "near_breach",
+  );
+  const pendingReKyc = accessibleClients.filter((c) =>
+    (c.kycStatus || "").startsWith("Action Required"),
+  );
   const idleCashTotalLakhs = accessibleClients.reduce((sum, c) => {
     return sum + getClientIdleSavingsLakhs(c);
   }, 0);
-  const nudgeCount = nearBreachTasks.length + pendingReKyc.length + (idleCashTotalLakhs > 0 ? 1 : 0);
+  const nudgeCount =
+    nearBreachTasks.length +
+    pendingReKyc.length +
+    (idleCashTotalLakhs > 0 ? 1 : 0);
 
   // Global Cmd/Ctrl+K to open the command palette
   useEffect(() => {
     const handleKeyDown = (e) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
         setPaletteOpen(true);
       }
-      if (e.key === 'Escape') {
+      if (e.key === "Escape") {
         setPaletteOpen(false);
         setBellOpen(false);
       }
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
   const paletteClientResults = paletteQuery
-    ? accessibleClients.filter(c => c.name.toLowerCase().includes(paletteQuery.toLowerCase()))
+    ? accessibleClients.filter((c) =>
+        c.name.toLowerCase().includes(paletteQuery.toLowerCase()),
+      )
     : [];
   const paletteTaskResults = paletteQuery
-    ? accessibleTasks.filter(t => t.title.toLowerCase().includes(paletteQuery.toLowerCase()))
+    ? accessibleTasks.filter((t) =>
+        t.title.toLowerCase().includes(paletteQuery.toLowerCase()),
+      )
     : [];
 
   const openClientFromPalette = (clientId) => {
     setSelectedClientId(clientId);
-    setActiveTab('copilot');
+    setActiveTab("copilot");
     setPaletteOpen(false);
-    setPaletteQuery('');
+    setPaletteQuery("");
   };
 
   const openTaskFromPalette = () => {
-    setActiveTab('allocation');
+    setActiveTab("allocation");
     setPaletteOpen(false);
-    setPaletteQuery('');
+    setPaletteQuery("");
   };
 
   // Live IST Clock formatted as dd-mm-yy • HH:MM:SS IST
   useEffect(() => {
     const updateTime = () => {
       const now = new Date();
-      const istString = now.toLocaleTimeString('en-IN', { 
-        timeZone: 'Asia/Kolkata', 
-        hour12: false, 
-        hour: '2-digit', 
-        minute: '2-digit', 
-        second: '2-digit' 
+      const istString = now.toLocaleTimeString("en-IN", {
+        timeZone: "Asia/Kolkata",
+        hour12: false,
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
       });
-      const d = String(now.getDate()).padStart(2, '0');
-      const m = String(now.getMonth() + 1).padStart(2, '0');
+      const d = String(now.getDate()).padStart(2, "0");
+      const m = String(now.getMonth() + 1).padStart(2, "0");
       const y = String(now.getFullYear()).slice(-2);
       setCurrentTime(`${d}-${m}-${y} • ${istString} IST`);
     };
@@ -248,7 +306,7 @@ export default function App() {
   const handleLogout = () => {
     setIsAuthenticated(false);
     setApiToken(null);
-    setApiStatus('connecting');
+    setApiStatus("connecting");
     setLoginError(null);
     setTasks([]);
     setTeamMembers([]);
@@ -269,15 +327,16 @@ export default function App() {
   };
 
   const refreshCurrentRole = async () => {
-    if (!apiToken) return { success: false, error: new Error('Missing backend session') };
+    if (!apiToken)
+      return { success: false, error: new Error("Missing backend session") };
     try {
-      setApiStatus('connecting');
+      setApiStatus("connecting");
       const bootstrap = await fetchBootstrap(apiToken);
       applyBootstrap(bootstrap, currentRM.id);
-      setApiStatus('connected');
+      setApiStatus("connected");
       return { success: true };
     } catch (error) {
-      setApiStatus('offline');
+      setApiStatus("offline");
       return { success: false, error };
     }
   };
@@ -285,14 +344,18 @@ export default function App() {
 
   const handleUpdateTaskStatus = async (taskId, nextStatus) => {
     if (!apiToken) {
-      showToast('Backend session is required before updating tasks.');
+      showToast("Backend session is required before updating tasks.");
       return;
     }
     try {
       const updated = await updateTaskStatus(apiToken, taskId, nextStatus);
-      setTasks(prev => prev.map(task => task.id === taskId ? normalizeTask(updated) : task));
+      setTasks((prev) =>
+        prev.map((task) =>
+          task.id === taskId ? normalizeTask(updated) : task,
+        ),
+      );
       void refreshCurrentRole();
-      showToast(`Task status advanced to "${nextStatus.replace('_', ' ')}"!`);
+      showToast(`Task status advanced to "${nextStatus.replace("_", " ")}"!`);
     } catch (error) {
       showToast(`Backend task update failed: ${error.message}`);
     }
@@ -300,12 +363,16 @@ export default function App() {
 
   const handleReassignTask = async (taskId, newAssigneeId, newAssigneeName) => {
     if (!apiToken) {
-      showToast('Backend session is required before reassigning tasks.');
+      showToast("Backend session is required before reassigning tasks.");
       return;
     }
     try {
       const updated = await assignTask(apiToken, taskId, newAssigneeId);
-      setTasks(prev => prev.map(task => task.id === taskId ? normalizeTask(updated) : task));
+      setTasks((prev) =>
+        prev.map((task) =>
+          task.id === taskId ? normalizeTask(updated) : task,
+        ),
+      );
       void refreshCurrentRole();
       showToast(`Task successfully reallocated to ${newAssigneeName}!`);
     } catch (error) {
@@ -314,7 +381,9 @@ export default function App() {
   };
 
   // Task count badge for current user
-  const userTaskCount = (isManager ? tasks : accessibleTasks).filter(t => t.status !== 'completed').length;
+  const userTaskCount = (isManager ? tasks : accessibleTasks).filter(
+    (t) => t.status !== "completed",
+  ).length;
 
   if (!isAuthenticated) {
     return (
@@ -341,9 +410,15 @@ export default function App() {
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <span className="font-extrabold text-base tracking-tight text-white">WealthDesk</span>
+                <span className="font-extrabold text-base tracking-tight text-white">
+                  WealthDesk
+                </span>
                 <span className="text-[10px] uppercase font-bold tracking-widest px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">
-                  {isOps ? 'Central Ops Queue' : isManager ? 'Manager Suite' : 'Advisor Suite'}
+                  {isOps
+                    ? "Central Ops Queue"
+                    : isManager
+                      ? "Manager Suite"
+                      : "Advisor Suite"}
                 </span>
               </div>
               <p className="text-[10px] text-slate-400 font-medium hidden sm:block">
@@ -362,29 +437,34 @@ export default function App() {
 
             {/* Backend Connectivity Status — click to retry when offline/connecting */}
             <button
-              onClick={apiStatus !== 'connected' ? handleRetryConnection : undefined}
-              disabled={apiStatus === 'connected'}
+              onClick={
+                apiStatus !== "connected" ? handleRetryConnection : undefined
+              }
+              disabled={apiStatus === "connected"}
               title={
-                apiStatus === 'connected'
-                  ? 'Connected to K2 WealthDesk backend'
-                  : apiStatus === 'connecting'
-                    ? 'Connecting to backend...'
-                    : 'Backend unreachable. Click to retry.'
+                apiStatus === "connected"
+                  ? "Connected to K2 WealthDesk backend"
+                  : apiStatus === "connecting"
+                    ? "Connecting to backend..."
+                    : "Backend unreachable. Click to retry."
               }
               className={`hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11px] font-semibold transition-colors ${
-                apiStatus === 'connected'
-                  ? 'bg-emerald-950/40 border-emerald-800 text-emerald-300 cursor-default'
-                  : apiStatus === 'connecting'
-                    ? 'bg-slate-900 border-slate-800 text-slate-400'
-                    : 'bg-amber-950/40 border-amber-800 text-amber-300 hover:border-amber-600 cursor-pointer'
+                apiStatus === "connected"
+                  ? "bg-emerald-950/40 border-emerald-800 text-emerald-300 cursor-default"
+                  : apiStatus === "connecting"
+                    ? "bg-slate-900 border-slate-800 text-slate-400"
+                    : "bg-amber-950/40 border-amber-800 text-amber-300 hover:border-amber-600 cursor-pointer"
               }`}
             >
-              {apiStatus === 'connected' && <CheckCircle2 className="w-3.5 h-3.5" />}
-              {apiStatus === 'connecting' && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
-              {apiStatus === 'offline' && <AlertTriangle className="w-3.5 h-3.5" />}
-              <span>
-                {apiStatus === 'connected' ? 'Backend Connected' : apiStatus === 'connecting' ? 'Connecting...' : 'Offline — Retry'}
-              </span>
+              {apiStatus === "connected" && (
+                <CheckCircle2 className="w-3.5 h-3.5" />
+              )}
+              {apiStatus === "connecting" && (
+                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+              )}
+              {apiStatus === "offline" && (
+                <AlertTriangle className="w-3.5 h-3.5" />
+              )}
             </button>
 
             {/* Command Palette Trigger */}
@@ -394,7 +474,9 @@ export default function App() {
               title="Jump to a client or task (Ctrl/Cmd+K)"
             >
               <Search className="w-3.5 h-3.5" />
-              <span className="font-mono text-[10px] border border-slate-700 rounded px-1">⌘K</span>
+              <span className="font-mono text-[10px] border border-slate-700 rounded px-1">
+                ⌘K
+              </span>
             </button>
 
             {/* House View Reference — honest alternative to a live AI chat bot */}
@@ -422,27 +504,40 @@ export default function App() {
               </button>
               {bellOpen && (
                 <div className="absolute right-0 mt-2 w-80 bg-slate-900 border border-slate-800 rounded-xl shadow-2xl p-3 space-y-2.5 z-50">
-                  <div className="text-xs font-bold text-white uppercase tracking-wider">Today's Nudges</div>
+                  <div className="text-xs font-bold text-white uppercase tracking-wider">
+                    Today's Nudges
+                  </div>
                   {nearBreachTasks.length > 0 && (
                     <div className="p-2.5 rounded-lg bg-rose-950/30 border border-rose-800 text-xs flex items-start gap-2">
                       <AlertTriangle className="w-3.5 h-3.5 text-rose-400 shrink-0 mt-0.5" />
-                      <span className="text-rose-200">{nearBreachTasks.length} task{nearBreachTasks.length > 1 ? 's' : ''} near SLA breach</span>
+                      <span className="text-rose-200">
+                        {nearBreachTasks.length} task
+                        {nearBreachTasks.length > 1 ? "s" : ""} near SLA breach
+                      </span>
                     </div>
                   )}
                   {pendingReKyc.length > 0 && (
                     <div className="p-2.5 rounded-lg bg-amber-950/30 border border-amber-800 text-xs flex items-start gap-2">
                       <FileWarning className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
-                      <span className="text-amber-200">{pendingReKyc.length} client{pendingReKyc.length > 1 ? 's' : ''} with pending Re-KYC</span>
+                      <span className="text-amber-200">
+                        {pendingReKyc.length} client
+                        {pendingReKyc.length > 1 ? "s" : ""} with pending Re-KYC
+                      </span>
                     </div>
                   )}
                   {idleCashTotalLakhs > 0 && (
                     <div className="p-2.5 rounded-lg bg-emerald-950/30 border border-emerald-800 text-xs flex items-start gap-2">
                       <Wallet className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
-                      <span className="text-emerald-200">₹{idleCashTotalLakhs.toFixed(0)} Lakhs idle across your book</span>
+                      <span className="text-emerald-200">
+                        ₹{idleCashTotalLakhs.toFixed(0)} Lakhs idle across your
+                        book
+                      </span>
                     </div>
                   )}
                   {nudgeCount === 0 && (
-                    <div className="text-xs text-slate-500 py-2 text-center">Nothing needs attention right now.</div>
+                    <div className="text-xs text-slate-500 py-2 text-center">
+                      Nothing needs attention right now.
+                    </div>
                   )}
                 </div>
               )}
@@ -452,9 +547,12 @@ export default function App() {
             <div className="flex items-center gap-2 bg-slate-900 border border-slate-800 rounded-lg p-1.5">
               <div className="flex items-center gap-1.5 text-xs pl-1 font-medium">
                 <Lock className="w-3 h-3 text-emerald-400" />
-                <span className="text-slate-200 font-semibold hidden sm:inline">{currentRM.name}</span>
+                <span className="text-slate-200 font-semibold hidden sm:inline">
+                  {currentRM.name}
+                </span>
                 <span className="text-slate-500 hidden sm:inline">
-                  ({isOps ? 'Ops View' : isManager ? 'Manager View' : 'RM View'})
+                  ({isOps ? "Ops View" : isManager ? "Manager View" : "RM View"}
+                  )
                 </span>
               </div>
               <button
@@ -470,15 +568,21 @@ export default function App() {
         {/* Tab Navigation Strip */}
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center gap-1 overflow-x-auto border-t border-slate-800/60 py-2">
           <button
-            onClick={() => setActiveTab('allocation')}
+            onClick={() => setActiveTab("allocation")}
             className={`px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 transition-all shrink-0 ${
-              activeTab === 'allocation'
-                ? 'bg-cyan-600 text-white shadow-md shadow-cyan-600/20'
-                : 'text-slate-400 hover:text-white hover:bg-slate-900'
+              activeTab === "allocation"
+                ? "bg-cyan-600 text-white shadow-md shadow-cyan-600/20"
+                : "text-slate-400 hover:text-white hover:bg-slate-900"
             }`}
           >
             <ClipboardList className="w-4 h-4" />
-            <span>{isOps ? 'Central Ops Queue' : isManager ? 'Team Standup Board' : 'My Action Desk'}</span>
+            <span>
+              {isOps
+                ? "Central Ops Queue"
+                : isManager
+                  ? "Team Standup Board"
+                  : "My Action Desk"}
+            </span>
             <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-cyan-950 text-cyan-200 border border-cyan-700">
               {userTaskCount}
             </span>
@@ -487,11 +591,11 @@ export default function App() {
           {!isOps && (
             <>
               <button
-                onClick={() => setActiveTab('copilot')}
+                onClick={() => setActiveTab("copilot")}
                 className={`px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 transition-all shrink-0 ${
-                  activeTab === 'copilot'
-                    ? 'bg-cyan-600 text-white shadow-md shadow-cyan-600/20'
-                    : 'text-slate-400 hover:text-white hover:bg-slate-900'
+                  activeTab === "copilot"
+                    ? "bg-cyan-600 text-white shadow-md shadow-cyan-600/20"
+                    : "text-slate-400 hover:text-white hover:bg-slate-900"
                 }`}
               >
                 <Brain className="w-4 h-4 text-amber-400" />
@@ -499,11 +603,11 @@ export default function App() {
               </button>
 
               <button
-                onClick={() => setActiveTab('autocrm')}
+                onClick={() => setActiveTab("autocrm")}
                 className={`px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 transition-all shrink-0 ${
-                  activeTab === 'autocrm'
-                    ? 'bg-cyan-600 text-white shadow-md shadow-cyan-600/20'
-                    : 'text-slate-400 hover:text-white hover:bg-slate-900'
+                  activeTab === "autocrm"
+                    ? "bg-cyan-600 text-white shadow-md shadow-cyan-600/20"
+                    : "text-slate-400 hover:text-white hover:bg-slate-900"
                 }`}
               >
                 <RefreshCw className="w-4 h-4 text-emerald-400" />
@@ -514,11 +618,11 @@ export default function App() {
 
           {isManager ? (
             <button
-              onClick={() => setActiveTab('oversight')}
+              onClick={() => setActiveTab("oversight")}
               className={`px-4 py-2 rounded-lg text-xs font-bold flex items-center gap-2 transition-all shrink-0 ${
-                activeTab === 'oversight'
-                  ? 'bg-cyan-600 text-white shadow-md shadow-cyan-600/20'
-                : 'text-slate-400 hover:text-white hover:bg-slate-900'
+                activeTab === "oversight"
+                  ? "bg-cyan-600 text-white shadow-md shadow-cyan-600/20"
+                  : "text-slate-400 hover:text-white hover:bg-slate-900"
               }`}
             >
               <ShieldCheck className="w-4 h-4 text-purple-400" />
@@ -530,7 +634,7 @@ export default function App() {
 
       {/* Main Workspace Body */}
       <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 w-full">
-        <section className={activeTab === 'allocation' ? 'block' : 'hidden'}>
+        <section className={activeTab === "allocation" ? "block" : "hidden"}>
           <TaskAllocationDesk
             tasks={tasks}
             teamMembers={teamMembers}
@@ -540,11 +644,13 @@ export default function App() {
             onUpdateTaskStatus={handleUpdateTaskStatus}
             onReassignTask={handleReassignTask}
             onSelectClientForCopilot={setSelectedClientId}
-            onNavigateToCopilot={() => setActiveTab('copilot')}
+            onNavigateToCopilot={() => setActiveTab("copilot")}
           />
         </section>
 
-        <section className={activeTab === 'copilot' && !isOps ? 'block' : 'hidden'}>
+        <section
+          className={activeTab === "copilot" && !isOps ? "block" : "hidden"}
+        >
           <RMCopilotDossier
             currentRM={currentRM}
             clientProfiles={clientProfiles}
@@ -555,12 +661,14 @@ export default function App() {
             onShowToast={showToast}
             onNavigateToAutoCRM={(clientId) => {
               setSelectedClientId(clientId);
-              setActiveTab('autocrm');
+              setActiveTab("autocrm");
             }}
           />
         </section>
 
-        <section className={activeTab === 'autocrm' && !isOps ? 'block' : 'hidden'}>
+        <section
+          className={activeTab === "autocrm" && !isOps ? "block" : "hidden"}
+        >
           <AutoCRMUpdate
             currentRM={currentRM}
             clientProfiles={clientProfiles}
@@ -568,7 +676,7 @@ export default function App() {
             playbookLibrary={playbookLibrary}
             apiToken={apiToken}
             onBackendRefresh={refreshCurrentRole}
-            onNavigateToAllocation={() => setActiveTab('allocation')}
+            onNavigateToAllocation={() => setActiveTab("allocation")}
             selectedClientId={selectedClientId}
             onSelectClient={setSelectedClientId}
             onShowToast={showToast}
@@ -576,8 +684,8 @@ export default function App() {
         </section>
 
         {isManager && (
-          <section className={activeTab === 'oversight' ? 'block' : 'hidden'}>
-            <PartnerOversight 
+          <section className={activeTab === "oversight" ? "block" : "hidden"}>
+            <PartnerOversight
               tasks={tasks}
               teamMembers={teamMembers}
               clientProfiles={clientProfiles}
@@ -601,7 +709,10 @@ export default function App() {
       {houseViewOpen && (
         <div
           className="fixed inset-0 bg-black/70 backdrop-blur-xs flex items-stretch justify-end z-50"
-          onClick={() => { setHouseViewOpen(false); setExpandedHouseView(null); }}
+          onClick={() => {
+            setHouseViewOpen(false);
+            setExpandedHouseView(null);
+          }}
         >
           <div
             className="bg-slate-900 border-l border-slate-800 w-full max-w-md h-full shadow-2xl flex flex-col"
@@ -614,10 +725,17 @@ export default function App() {
                   House View Reference
                 </h3>
                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-500 border border-slate-700 flex items-center gap-1 w-fit mt-1">
-                  <FlaskConical className="w-3 h-3" /> Mock content — see CONTEXT.md
+                  <FlaskConical className="w-3 h-3" /> Mock content — see
+                  CONTEXT.md
                 </span>
               </div>
-              <button onClick={() => { setHouseViewOpen(false); setExpandedHouseView(null); }} className="text-slate-500 hover:text-white">
+              <button
+                onClick={() => {
+                  setHouseViewOpen(false);
+                  setExpandedHouseView(null);
+                }}
+                className="text-slate-500 hover:text-white"
+              >
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -634,24 +752,41 @@ export default function App() {
             </div>
             <div className="flex-1 overflow-y-auto p-3 space-y-2">
               {houseViews
-                .filter(hv =>
-                  houseViewQuery === '' ||
-                  hv.title.toLowerCase().includes(houseViewQuery.toLowerCase()) ||
-                  hv.tags.some(t => t.toLowerCase().includes(houseViewQuery.toLowerCase()))
+                .filter(
+                  (hv) =>
+                    houseViewQuery === "" ||
+                    hv.title
+                      .toLowerCase()
+                      .includes(houseViewQuery.toLowerCase()) ||
+                    hv.tags.some((t) =>
+                      t.toLowerCase().includes(houseViewQuery.toLowerCase()),
+                    ),
                 )
-                .map(hv => (
-                  <div key={hv.id} className="rounded-lg border border-slate-800 bg-slate-950 overflow-hidden">
+                .map((hv) => (
+                  <div
+                    key={hv.id}
+                    className="rounded-lg border border-slate-800 bg-slate-950 overflow-hidden"
+                  >
                     <button
-                      onClick={() => setExpandedHouseView(expandedHouseView === hv.id ? null : hv.id)}
+                      onClick={() =>
+                        setExpandedHouseView(
+                          expandedHouseView === hv.id ? null : hv.id,
+                        )
+                      }
                       className="w-full text-left p-3 flex items-center justify-between"
                     >
                       <div>
-                        <div className="text-xs font-bold text-white">{hv.title}</div>
+                        <div className="text-xs font-bold text-white">
+                          {hv.title}
+                        </div>
                         <div className="text-[10px] text-slate-500 mt-0.5">
-                          Approved by {hv.approvedBy} • Last reviewed {hv.lastReviewed}
+                          Approved by {hv.approvedBy} • Last reviewed{" "}
+                          {hv.lastReviewed}
                         </div>
                       </div>
-                      <ChevronRight className={`w-4 h-4 text-slate-500 shrink-0 transition-transform ${expandedHouseView === hv.id ? 'rotate-90' : ''}`} />
+                      <ChevronRight
+                        className={`w-4 h-4 text-slate-500 shrink-0 transition-transform ${expandedHouseView === hv.id ? "rotate-90" : ""}`}
+                      />
                     </button>
                     {expandedHouseView === hv.id && (
                       <div className="px-3 pb-3 text-xs text-slate-300 leading-relaxed border-t border-slate-800/60 pt-2">
@@ -660,12 +795,20 @@ export default function App() {
                     )}
                   </div>
                 ))}
-              {houseViews.filter(hv =>
-                houseViewQuery === '' ||
-                hv.title.toLowerCase().includes(houseViewQuery.toLowerCase()) ||
-                hv.tags.some(t => t.toLowerCase().includes(houseViewQuery.toLowerCase()))
+              {houseViews.filter(
+                (hv) =>
+                  houseViewQuery === "" ||
+                  hv.title
+                    .toLowerCase()
+                    .includes(houseViewQuery.toLowerCase()) ||
+                  hv.tags.some((t) =>
+                    t.toLowerCase().includes(houseViewQuery.toLowerCase()),
+                  ),
               ).length === 0 && (
-                <div className="text-xs text-slate-500 text-center py-8">No approved house view matches this topic yet — escalate to the research desk rather than improvising an answer.</div>
+                <div className="text-xs text-slate-500 text-center py-8">
+                  No approved house view matches this topic yet — escalate to
+                  the research desk rather than improvising an answer.
+                </div>
               )}
             </div>
           </div>
@@ -691,21 +834,32 @@ export default function App() {
                 placeholder="Jump to a client or task..."
                 className="flex-1 bg-transparent text-sm text-white focus:outline-none placeholder:text-slate-500"
               />
-              <button onClick={() => setPaletteOpen(false)} className="text-slate-500 hover:text-white">
+              <button
+                onClick={() => setPaletteOpen(false)}
+                className="text-slate-500 hover:text-white"
+              >
                 <X className="w-4 h-4" />
               </button>
             </div>
             <div className="max-h-80 overflow-y-auto p-2">
-              {paletteQuery === '' && (
-                <div className="text-xs text-slate-500 text-center py-6">Start typing a client or task name</div>
+              {paletteQuery === "" && (
+                <div className="text-xs text-slate-500 text-center py-6">
+                  Start typing a client or task name
+                </div>
               )}
-              {paletteQuery !== '' && paletteClientResults.length === 0 && paletteTaskResults.length === 0 && (
-                <div className="text-xs text-slate-500 text-center py-6">No matches in your book</div>
-              )}
+              {paletteQuery !== "" &&
+                paletteClientResults.length === 0 &&
+                paletteTaskResults.length === 0 && (
+                  <div className="text-xs text-slate-500 text-center py-6">
+                    No matches in your book
+                  </div>
+                )}
               {paletteClientResults.length > 0 && (
                 <div className="mb-2">
-                  <div className="text-[10px] text-slate-500 uppercase font-semibold px-2 py-1">Clients</div>
-                  {paletteClientResults.map(c => (
+                  <div className="text-[10px] text-slate-500 uppercase font-semibold px-2 py-1">
+                    Clients
+                  </div>
+                  {paletteClientResults.map((c) => (
                     <button
                       key={c.id}
                       onClick={() => openClientFromPalette(c.id)}
@@ -719,14 +873,18 @@ export default function App() {
               )}
               {paletteTaskResults.length > 0 && (
                 <div>
-                  <div className="text-[10px] text-slate-500 uppercase font-semibold px-2 py-1">Tasks</div>
-                  {paletteTaskResults.map(t => (
+                  <div className="text-[10px] text-slate-500 uppercase font-semibold px-2 py-1">
+                    Tasks
+                  </div>
+                  {paletteTaskResults.map((t) => (
                     <button
                       key={t.id}
                       onClick={() => openTaskFromPalette()}
                       className="w-full text-left px-2.5 py-2 rounded-lg hover:bg-slate-800 flex items-center justify-between text-xs"
                     >
-                      <span className="font-semibold text-slate-200">{t.title}</span>
+                      <span className="font-semibold text-slate-200">
+                        {t.title}
+                      </span>
                       <span className="text-slate-500">{t.clientName}</span>
                     </button>
                   ))}
