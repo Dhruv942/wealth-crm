@@ -5,7 +5,7 @@ import {
   ShieldAlert, Sparkles, Building, ArrowUpRight, Lock, Send
 } from 'lucide-react';
 import { TEAM_MEMBERS as LOCAL_TEAM_MEMBERS, FIRM_METRICS as LOCAL_FIRM_METRICS, CLIENT_PROFILES as LOCAL_CLIENT_PROFILES } from '../mockData/wealthData';
-import { formatIdleCashFromClients } from '../utils/frontendState';
+import { formatIdleCashFromClients, getVisibleTasksForRole } from '../utils/frontendState';
 
 const ALERT_SEVERITY_RANK = { critical: 4, warning: 3, opportunity: 2, info: 1 };
 
@@ -39,11 +39,7 @@ export default function TaskAllocationDesk({
 
   // Strict role-based task visibility:
   // RMs only see tasks assigned to them OR tasks for their clients with Ops
-  const visibleTasks = tasks.filter(task => {
-    if (isManager) return true;
-    if (isOps) return task.assignedTo === currentRM.id || task.assignedToName?.includes('Ops');
-    return task.assignedTo === currentRM.id || (task.assignedTo.startsWith('ops') && task.assignedToName?.includes('Ops'));
-  });
+  const visibleTasks = getVisibleTasksForRole(tasks, clientProfiles, currentRM);
 
   const filteredTasks = visibleTasks.filter(task => {
     if (isManagerOrOps && selectedRM !== 'all' && task.assignedTo !== selectedRM) return false;
@@ -143,7 +139,7 @@ export default function TaskAllocationDesk({
     return 'completed';
   };
 
-  const openOpsTasks = visibleTasks.filter(task => task.assignedTo === currentRM.id && task.status !== 'completed');
+  const openOpsTasks = visibleTasks.filter(task => task.status !== 'completed');
   const urgentOpsTasks = openOpsTasks.filter(task => ['Critical', 'Urgent'].includes(task.priority));
 
   return (
@@ -223,7 +219,7 @@ export default function TaskAllocationDesk({
               </div>
               <div className="mt-2 flex items-baseline gap-2">
                 <span className="text-2xl font-bold text-amber-400 tracking-tight">
-                  {visibleTasks.filter(t => t.assignedTo === currentRM.id).length}
+                  {visibleTasks.filter(t => t.status !== 'completed').length}
                 </span>
                 <span className="text-xs text-emerald-400 font-medium">SLA Adherence: {currentRM.slaScore}</span>
               </div>
@@ -366,7 +362,6 @@ export default function TaskAllocationDesk({
             <option value="all">All Categories</option>
             <option value="Portfolio Rebalancing">Portfolio Rebalancing</option>
             <option value="Compliance / KYC">Compliance / KYC</option>
-            <option value="Compliance / LRS">Compliance / LRS</option>
             <option value="Banking / LRS">Banking / LRS</option>
             <option value="Tax Optimization">Tax Optimization</option>
             <option value="Client Review">Client Review</option>

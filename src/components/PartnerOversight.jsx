@@ -4,26 +4,7 @@ import {
   Clock, CheckCircle2, ArrowRight, ShieldAlert, Zap, BarChart2,
   FileCheck, ExternalLink, HelpCircle, GraduationCap, FlaskConical
 } from 'lucide-react';
-
-function getAllocationDriftSeverity(client) {
-  const dims = ['equity', 'debt', 'alternates'];
-  const current = client.currentAllocation;
-  const mandate = client.mandateAllocation;
-  if (!current || !mandate) return { level: 'low', label: 'Not loaded' };
-  const maxDrift = Math.max(...dims.map(d => Math.abs((current[d] || 0) - (mandate[d] || 0))));
-  if (maxDrift >= 12) return { level: 'high', label: `${maxDrift}pt drift` };
-  if (maxDrift >= 5) return { level: 'medium', label: `${maxDrift}pt drift` };
-  return { level: 'low', label: `${maxDrift}pt drift` };
-}
-
-function getIdleCashSeverity(client) {
-  const amount = client.idleCashAmountNumeric || 0;
-  const label = client.idleSavings || client.idleCashLabel || 'Not loaded';
-  const lakhs = amount ? amount / 100000 : parseFloat((label.match(/([\d.]+)\s*Lakhs?/i) || [])[1] || '0');
-  if (lakhs >= 40) return { level: 'high', label };
-  if (lakhs >= 20) return { level: 'medium', label };
-  return { level: 'low', label };
-}
+import { getAllocationDriftSeverity, getIdleCashSeverity } from '../utils/frontendState';
 
 function getKycSeverity(client) {
   if ((client.kycStatus || '').startsWith('Action Required')) {

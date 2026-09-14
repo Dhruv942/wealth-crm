@@ -76,6 +76,7 @@ export const CLIENT_PROFILES = [
       alternates: 8
     },
     idleSavings: "₹45 Lakhs",
+    idleSavingsNumeric: 45,
     idleSavingsRate: "3.5% p.a. (Kotak Privy)",
     taxHarvestingOpportunity: "₹6.2 Lakhs",
     portfolioHighlights: [
@@ -152,6 +153,7 @@ export const CLIENT_PROFILES = [
       alternates: 10
     },
     idleSavings: "₹35 Lakhs",
+    idleSavingsNumeric: 35,
     idleSavingsRate: "3.0% p.a. (HDFC Classic)",
     taxHarvestingOpportunity: "₹1.8 Lakhs",
     portfolioHighlights: [
@@ -215,6 +217,7 @@ export const CLIENT_PROFILES = [
       alternates: 0
     },
     idleSavings: "₹22 Lakhs",
+    idleSavingsNumeric: 22,
     idleSavingsRate: "3.5% p.a. (ICICI Bank)",
     taxHarvestingOpportunity: "₹85,000",
     portfolioHighlights: [
@@ -270,6 +273,7 @@ export const CLIENT_PROFILES = [
       alternates: 13
     },
     idleSavings: "₹65 Lakhs",
+    idleSavingsNumeric: 65,
     idleSavingsRate: "4.0% p.a. (Axis Burgundy)",
     taxHarvestingOpportunity: "₹4.5 Lakhs",
     portfolioHighlights: [
@@ -464,7 +468,7 @@ export const DEMO_CALL_SCENARIOS = [
           priority: "Urgent",
           slaCountdown: "24h",
           slaStatus: "on_track",
-          category: "Compliance / LRS",
+          category: "Banking / LRS",
           status: "pending_ops"
         }
       ],

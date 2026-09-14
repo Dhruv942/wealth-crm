@@ -11,6 +11,8 @@ import RMCopilotDossier from './components/RMCopilotDossier';
 import AutoCRMUpdate from './components/AutoCRMUpdate';
 import PartnerOversight from './components/PartnerOversight';
 import {
+  CLIENT_PROFILES as LOCAL_CLIENT_PROFILES,
+  DEMO_CALL_SCENARIOS as LOCAL_DEMO_CALL_SCENARIOS,
   TEAM_MEMBERS as LOCAL_TEAM_MEMBERS
 } from './mockData/wealthData';
 import {
@@ -21,7 +23,8 @@ import {
   updateTaskStatus
 } from './services/api';
 import {
-  getClientIdleSavingsLakhs
+  getClientIdleSavingsLakhs,
+  getVisibleTasksForRole
 } from './utils/frontendState';
 
 const toRoleId = (user) => {
@@ -92,15 +95,33 @@ export default function App() {
 
   const applyBootstrap = (bootstrap, roleId) => {
     const nextTeamMembers = bootstrap.teamMembers || [];
+    const localClientsById = new Map(LOCAL_CLIENT_PROFILES.map(client => [client.id, client]));
     const nextClients = (bootstrap.clientProfiles || []).map(client => ({
+      ...(localClientsById.get(client.id) || {}),
       ...client,
       assignedRMId: client.assignedRMId || client.assignedRmId
     }));
     const nextCurrentRM = nextTeamMembers.find(m => m.id === roleId) || nextTeamMembers[0];
+    const visibleClientIds = new Set(nextClients.map(client => client.id));
+    const localScenariosById = new Map(LOCAL_DEMO_CALL_SCENARIOS.map(scenario => [scenario.id, scenario]));
+    const bootstrapScenarios = bootstrap.demoCallScenarios?.length ? bootstrap.demoCallScenarios : LOCAL_DEMO_CALL_SCENARIOS;
+    const nextDemoCallScenarios = bootstrapScenarios
+      .map(scenario => {
+        const localScenario = localScenariosById.get(scenario.id) || {};
+        return {
+          ...localScenario,
+          ...scenario,
+          parsedResult: {
+            ...(localScenario.parsedResult || {}),
+            ...(scenario.parsedResult || {})
+          }
+        };
+      })
+      .filter(scenario => visibleClientIds.has(scenario.clientId));
     setTeamMembers(nextTeamMembers);
     setClientProfiles(nextClients);
     setTasks((bootstrap.tasks || []).map(normalizeTask));
-    setDemoCallScenarios(bootstrap.demoCallScenarios || []);
+    setDemoCallScenarios(nextDemoCallScenarios);
     setFirmMetrics(bootstrap.firmMetrics || {});
     setHouseViews(bootstrap.houseViews || []);
     setPlaybookLibrary(bootstrap.playbookLibrary || []);
@@ -156,9 +177,7 @@ export default function App() {
     : clientProfiles.filter(c => c.assignedRMId === currentRM.id);
   const accessibleTasks = isManager
     ? tasks
-    : isOps
-      ? tasks.filter(t => t.assignedTo === currentRM.id || t.assignedToName?.includes('Ops'))
-      : tasks.filter(t => t.assignedTo === currentRM.id || t.assignedTo === 'ops-1');
+    : getVisibleTasksForRole(tasks, clientProfiles, currentRM);
 
   const nearBreachTasks = accessibleTasks.filter(t => t.slaStatus === 'near_breach');
   const pendingReKyc = accessibleClients.filter(c => (c.kycStatus || '').startsWith('Action Required'));
@@ -295,9 +314,7 @@ export default function App() {
   };
 
   // Task count badge for current user
-  const userTaskCount = isManagerOrOps
-    ? tasks.length
-    : tasks.filter(t => t.assignedTo === currentRM.id).length;
+  const userTaskCount = (isManager ? tasks : accessibleTasks).filter(t => t.status !== 'completed').length;
 
   if (!isAuthenticated) {
     return (
@@ -558,16 +575,18 @@ export default function App() {
           />
         </section>
 
-        <section className={activeTab === 'oversight' && isManager ? 'block' : 'hidden'}>
-          <PartnerOversight 
-            tasks={tasks}
-            teamMembers={teamMembers}
-            clientProfiles={clientProfiles}
-            demoCallScenarios={demoCallScenarios}
-            firmMetrics={firmMetrics}
-            auditLogs={auditLogs}
-          />
-        </section>
+        {isManager && (
+          <section className={activeTab === 'oversight' ? 'block' : 'hidden'}>
+            <PartnerOversight 
+              tasks={tasks}
+              teamMembers={teamMembers}
+              clientProfiles={clientProfiles}
+              demoCallScenarios={demoCallScenarios}
+              firmMetrics={firmMetrics}
+              auditLogs={auditLogs}
+            />
+          </section>
+        )}
       </main>
 
       {/* Global Toast Notification */}

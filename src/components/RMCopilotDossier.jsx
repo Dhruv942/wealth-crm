@@ -6,7 +6,7 @@ import {
   FileText, Shield, DollarSign, Lock, Gift, CalendarClock, RefreshCw
 } from 'lucide-react';
 import { fetchClientDossier, fetchClientPortfolio, fetchCopilotAlerts } from '../services/api';
-import { copyTextToClipboard } from '../utils/frontendState';
+import { buildClientViewModel, copyTextToClipboard } from '../utils/frontendState';
 
 export default function RMCopilotDossier({ 
   currentRM,
@@ -37,61 +37,12 @@ export default function RMCopilotDossier({
   // If current selection is not accessible by this RM, fallback to first accessible client
   const baseClient = accessibleClients.find(c => c.id === selectedClientId) || accessibleClients[0] || clientProfiles[0] || null;
 
-  const toAllocation = (allocation) => ({
-    equity: allocation?.equityPct ?? 0,
-    debt: allocation?.debtPct ?? 0,
-    alternates: allocation?.alternatesPct ?? 0
-  });
-
-  const currentAllocation = toAllocation(portfolio?.currentAllocation);
-  const mandateAllocation = toAllocation(portfolio?.targetAllocation);
-  const portfolioHighlights = (portfolio?.holdings || []).map(holding => ({
-    name: holding.name,
-    type: holding.assetType,
-    value: holding.valueDisplay,
-    returns: holding.returnDisplay || ''
-  }));
-  const clientContextNotes = (clientDetail?.contextNotes || []).map(note => note.note).join(' ');
   const normalizedAlerts = coPilotAlerts.map(alert => ({
     ...alert,
     severity: (alert.severity || '').toLowerCase(),
     description: alert.description || alert.detail || ''
   }));
-  const talkingPoints = [
-    portfolio?.idleCash?.description,
-    portfolio?.taxHarvestingOpportunity?.description,
-    portfolio?.currentAllocation && portfolio?.targetAllocation
-      ? `Review allocation: equity ${currentAllocation.equity}% vs target ${mandateAllocation.equity}%, debt ${currentAllocation.debt}% vs target ${mandateAllocation.debt}%.`
-      : null,
-    normalizedAlerts[0]?.description,
-  ].filter(Boolean);
-  const objectionDefense = [
-    {
-      question: 'Why are you recommending this next step?',
-      answer: portfolio?.idleCash?.description || normalizedAlerts[0]?.description || 'Use the backend portfolio snapshot and approved house view before making a recommendation.'
-    },
-    {
-      question: 'Is this aligned to my risk profile?',
-      answer: `The client risk profile is ${baseClient?.riskCategory || 'not available'}; verify any execution against the recorded mandate before placing orders.`
-    }
-  ];
-  const client = baseClient ? {
-    ...baseClient,
-    ...(clientDetail || {}),
-    assignedRMId: baseClient.assignedRMId || baseClient.assignedRmId,
-    aumDisplay: baseClient.aumDisplay || (baseClient.aumNumeric ? `₹${(baseClient.aumNumeric / 10000000).toFixed(2)} Cr` : '—'),
-    currentAllocation,
-    mandateAllocation,
-    portfolioHighlights,
-    clientContextNotes,
-    coPilotAlerts: normalizedAlerts,
-    relationshipMoments: clientDetail?.relationshipMoments || [],
-    idleSavings: portfolio?.idleCash?.title || 'No backend idle-cash flag',
-    idleSavingsRate: portfolio?.idleCash?.description || 'No idle-cash opportunity returned',
-    taxHarvestingOpportunity: portfolio?.taxHarvestingOpportunity?.title || 'No backend tax flag',
-    talkingPoints,
-    objectionDefense
-  } : null;
+  const client = buildClientViewModel({ baseClient, clientDetail, portfolio, normalizedAlerts });
 
   useEffect(() => {
     if (baseClient && baseClient.id !== selectedClientId) {
