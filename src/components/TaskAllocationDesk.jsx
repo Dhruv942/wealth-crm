@@ -5,7 +5,7 @@ import {
   ShieldAlert, Sparkles, Building, ArrowUpRight, Lock, Send
 } from 'lucide-react';
 import { TEAM_MEMBERS as LOCAL_TEAM_MEMBERS, FIRM_METRICS as LOCAL_FIRM_METRICS, CLIENT_PROFILES as LOCAL_CLIENT_PROFILES } from '../mockData/wealthData';
-import { formatIdleCashFromClients, getOpenTasks, getVisibleTasksForRole } from '../utils/frontendState';
+import { formatIdleCashFromClients, getOpenTasks, getTasksForStatusColumn, getVisibleTasksForRole } from '../utils/frontendState';
 
 const ALERT_SEVERITY_RANK = { critical: 4, warning: 3, opportunity: 2, info: 1 };
 
@@ -381,7 +381,8 @@ export default function TaskAllocationDesk({
       {/* Kanban Board Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
         {columns.map(col => {
-          const colTasks = filteredOpenTasks.filter(t => t.status === col.id);
+          const sourceTasks = col.id === 'completed' ? filteredTasks : filteredOpenTasks;
+          const colTasks = getTasksForStatusColumn(sourceTasks, col.id);
           return (
             <div key={col.id} className="bg-slate-900/40 border border-slate-800/80 rounded-xl p-3 flex flex-col min-h-[560px]">
               {/* Column Header */}

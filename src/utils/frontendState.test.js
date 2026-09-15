@@ -7,6 +7,7 @@ import {
   getClientIdleSavingsLakhs,
   getIdleCashSeverity,
   getOpenTasks,
+  getTasksForStatusColumn,
   getVisibleTasksForRole,
   renderAuditDetail
 } from './frontendState.js';
@@ -79,6 +80,16 @@ test('uses one open-task selector for every task count surface', () => {
   ];
 
   assert.deepEqual(getOpenTasks(tasks).map(task => task.id), ['pending', 'ops', 'processing']);
+});
+
+test('keeps completed tasks renderable in the completed status column', () => {
+  const tasks = [
+    { id: 'pending', status: 'pending_rm' },
+    { id: 'done', status: 'completed' }
+  ];
+
+  assert.deepEqual(getOpenTasks(tasks).map(task => task.id), ['pending']);
+  assert.deepEqual(getTasksForStatusColumn(tasks, 'completed').map(task => task.id), ['done']);
 });
 
 test('dedupes generated talking points and falls back to client dossier copy', () => {

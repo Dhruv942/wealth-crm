@@ -81,6 +81,10 @@ export function getOpenTasks(tasks) {
   return tasks.filter(task => task.status !== 'completed');
 }
 
+export function getTasksForStatusColumn(tasks, status) {
+  return tasks.filter(task => task.status === status);
+}
+
 function opportunityTitle(value) {
   if (!value) return null;
   if (typeof value === 'string') return value;
