@@ -1,22 +1,38 @@
-import React from 'react';
+import React from "react";
 import {
-  ShieldCheck, AlertTriangle, TrendingUp, Users, Building,
-  Clock, CheckCircle2, ArrowRight, ShieldAlert, Zap, BarChart2,
-  FileCheck, ExternalLink, HelpCircle, GraduationCap, FlaskConical
-} from 'lucide-react';
-import { getAllocationDriftSeverity, getIdleCashSeverity } from '../utils/frontendState';
+  ShieldCheck,
+  AlertTriangle,
+  TrendingUp,
+  Users,
+  Building,
+  Clock,
+  CheckCircle2,
+  ArrowRight,
+  ShieldAlert,
+  Zap,
+  BarChart2,
+  FileCheck,
+  ExternalLink,
+  HelpCircle,
+  GraduationCap,
+  FlaskConical,
+} from "lucide-react";
+import {
+  getAllocationDriftSeverity,
+  getIdleCashSeverity,
+} from "../utils/frontendState";
 
 function getKycSeverity(client) {
-  if ((client.kycStatus || '').startsWith('Action Required')) {
-    return { level: 'high', label: 'Action Required' };
+  if ((client.kycStatus || "").startsWith("Action Required")) {
+    return { level: "high", label: "Action Required" };
   }
-  return { level: 'low', label: 'Verified' };
+  return { level: "low", label: "Verified" };
 }
 
 const HEATMAP_COLORS = {
-  high: 'bg-rose-950/50 text-rose-300 border-rose-800',
-  medium: 'bg-amber-950/50 text-amber-300 border-amber-800',
-  low: 'bg-emerald-950/40 text-emerald-300 border-emerald-800/60'
+  high: "bg-rose-950/50 text-rose-300 border-rose-800",
+  medium: "bg-amber-950/50 text-amber-300 border-amber-800",
+  low: "bg-emerald-950/40 text-emerald-300 border-emerald-800/60",
 };
 
 export default function PartnerOversight({
@@ -25,25 +41,41 @@ export default function PartnerOversight({
   clientProfiles = [],
   demoCallScenarios = [],
   firmMetrics = {},
-  auditLogs = []
+  auditLogs = [],
 }) {
   // Derive branch status from the same data shown in the capacity matrix
   // and SLA counts below, rather than a fixed "always healthy" label
-  const hasNearBreachSLA = tasks.some(t => t.slaStatus === 'near_breach');
+  const hasNearBreachSLA = tasks.some((t) => t.slaStatus === "near_breach");
   const hasCapacityIssue = teamMembers.some(
-    m => tasks.filter(t => t.assignedTo === m.id).length >= 5
+    (m) => tasks.filter((t) => t.assignedTo === m.id).length >= 5,
   );
   const branchNeedsAttention = hasNearBreachSLA || hasCapacityIssue;
 
   const handleExportAuditReport = () => {
-    const headers = ['Timestamp', 'Event', 'Client', 'Advisor', 'Detail', 'Compliance Status'];
-    const rows = auditLogs.map(log => [log.timestamp, log.event, log.client, log.advisor, log.detail, log.complianceStatus]);
+    const headers = [
+      "Timestamp",
+      "Event",
+      "Client",
+      "Advisor",
+      "Detail",
+      "Compliance Status",
+    ];
+    const rows = auditLogs.map((log) => [
+      log.timestamp,
+      log.event,
+      log.client,
+      log.advisor,
+      log.detail,
+      log.complianceStatus,
+    ]);
     const csv = [headers, ...rows]
-      .map(row => row.map(field => `"${String(field).replace(/"/g, '""')}"`).join(','))
-      .join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      .map((row) =>
+        row.map((field) => `"${String(field).replace(/"/g, '""')}"`).join(","),
+      )
+      .join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
+    const link = document.createElement("a");
     link.href = url;
     link.download = `k2-audit-report-${new Date().toISOString().slice(0, 10)}.csv`;
     document.body.appendChild(link);
@@ -67,18 +99,24 @@ export default function PartnerOversight({
               </h2>
             </div>
             <p className="text-xs text-slate-400 mt-1">
-              Managerial visibility across RM execution, pipeline velocity, team SLA adherence, and SEBI compliance audit trails.
+              Managerial visibility across RM execution, pipeline velocity, team
+              SLA adherence, and SEBI compliance audit trails.
             </p>
           </div>
 
           <div className="flex items-center gap-3">
-            <span className={`text-xs px-3 py-1.5 rounded-lg font-semibold flex items-center gap-1.5 border ${
-              branchNeedsAttention
-                ? 'bg-amber-950 text-amber-300 border-amber-800'
-                : 'bg-emerald-950 text-emerald-300 border-emerald-800'
-            }`}>
-              <span className={`w-2 h-2 rounded-full ${branchNeedsAttention ? 'bg-amber-400' : 'bg-emerald-400'}`} />
-              Branch Status: {branchNeedsAttention ? 'Needs Attention' : 'On Track'}
+            <span
+              className={`text-xs px-3 py-1.5 rounded-lg font-semibold flex items-center gap-1.5 border ${
+                branchNeedsAttention
+                  ? "bg-amber-950 text-amber-300 border-amber-800"
+                  : "bg-emerald-950 text-emerald-300 border-emerald-800"
+              }`}
+            >
+              <span
+                className={`w-2 h-2 rounded-full ${branchNeedsAttention ? "bg-amber-400" : "bg-emerald-400"}`}
+              />
+              Branch Status:{" "}
+              {branchNeedsAttention ? "Needs Attention" : "On Track"}
             </span>
           </div>
         </div>
@@ -86,27 +124,51 @@ export default function PartnerOversight({
         {/* 4 Pillar Executive Metrics */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-6">
           <div className="p-4 rounded-xl bg-slate-950 border border-slate-800">
-            <span className="text-xs text-slate-400 uppercase tracking-wider font-semibold block">Total Managed AUM</span>
-            <span className="text-2xl font-black text-white mt-1 block">{firmMetrics.totalAUM}</span>
-            <span className="text-xs text-emerald-400 mt-1 block font-medium">+14.2% YoY Inflows</span>
+            <span className="text-xs text-slate-400 uppercase tracking-wider font-semibold block">
+              Total Managed AUM
+            </span>
+            <span className="text-2xl font-black text-white mt-1 block">
+              {firmMetrics.totalAUM}
+            </span>
+            <span className="text-xs text-emerald-400 mt-1 block font-medium">
+              +14.2% YoY Inflows
+            </span>
           </div>
 
           <div className="p-4 rounded-xl bg-slate-950 border border-slate-800">
-            <span className="text-xs text-slate-400 uppercase tracking-wider font-semibold block">Unallocated Client Cash</span>
-            <span className="text-2xl font-black text-amber-400 mt-1 block">{firmMetrics.unallocatedCashAcrossClients}</span>
-            <span className="text-xs text-slate-400 mt-1 block">Immediate fee expansion pool</span>
+            <span className="text-xs text-slate-400 uppercase tracking-wider font-semibold block">
+              Unallocated Client Cash
+            </span>
+            <span className="text-2xl font-black text-amber-400 mt-1 block">
+              {firmMetrics.unallocatedCashAcrossClients}
+            </span>
+            <span className="text-xs text-slate-400 mt-1 block">
+              Immediate fee expansion pool
+            </span>
           </div>
 
           <div className="p-4 rounded-xl bg-slate-950 border border-slate-800">
-            <span className="text-xs text-slate-400 uppercase tracking-wider font-semibold block">CRM Log Adherence</span>
-            <span className="text-2xl font-black text-sky-400 mt-1 block">{firmMetrics.crmHygieneScore}</span>
-            <span className="text-xs text-slate-400 mt-1 block">Auto-logged from RM call notes</span>
+            <span className="text-xs text-slate-400 uppercase tracking-wider font-semibold block">
+              CRM Log Adherence
+            </span>
+            <span className="text-2xl font-black text-sky-400 mt-1 block">
+              {firmMetrics.crmHygieneScore}
+            </span>
+            <span className="text-xs text-slate-400 mt-1 block">
+              Auto-logged from RM call notes
+            </span>
           </div>
 
           <div className="p-4 rounded-xl bg-slate-950 border border-slate-800">
-            <span className="text-xs text-slate-400 uppercase tracking-wider font-semibold block">Tax Loss Harvest Window</span>
-            <span className="text-2xl font-black text-emerald-400 mt-1 block">{firmMetrics.taxLossHarvestableWindow}</span>
-            <span className="text-xs text-slate-400 mt-1 block">Active across 4 HNWI portfolios</span>
+            <span className="text-xs text-slate-400 uppercase tracking-wider font-semibold block">
+              Tax Loss Harvest Window
+            </span>
+            <span className="text-2xl font-black text-emerald-400 mt-1 block">
+              {firmMetrics.taxLossHarvestableWindow}
+            </span>
+            <span className="text-xs text-slate-400 mt-1 block">
+              Active across 4 HNWI portfolios
+            </span>
           </div>
         </div>
       </div>
@@ -120,10 +182,13 @@ export default function PartnerOversight({
               RM Advisory Capacity, SLA & Compliance Quality Matrix
             </h3>
             <p className="text-xs text-slate-400 mt-0.5">
-              Identify advisors facing operational bottlenecks and reassign tasks across the team
+              Identify advisors facing operational bottlenecks and reassign
+              tasks across the team
             </p>
           </div>
-          <span className="text-xs text-slate-400 font-mono">Real-time Workload Pulse</span>
+          <span className="text-xs text-slate-400 font-mono">
+            Real-time Workload Pulse
+          </span>
         </div>
 
         <div className="overflow-x-auto">
@@ -140,41 +205,67 @@ export default function PartnerOversight({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60">
-              {teamMembers.filter(member => member.includeInCapacityMatrix !== false && member.level !== 'Manager').map(member => {
-                const memberTasks = tasks.filter(t => t.assignedTo === member.id && t.status !== 'completed');
-                return (
-                  <tr key={member.id} className="hover:bg-slate-950/50 transition-colors">
-                    <td className="py-3 px-4">
-                      <div className="font-bold text-white">{member.name}</div>
-                      <div className="text-[11px] text-slate-400">{member.role}</div>
-                    </td>
-                    <td className="py-3 px-4">
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${member.badgeColor}`}>
-                        {member.level}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 font-semibold text-slate-100">{member.totalAUM}</td>
-                    <td className="py-3 px-4 text-slate-300">{member.clientsCount} Accounts</td>
-                    <td className="py-3 px-4">
-                      <span className="font-bold text-cyan-300">{memberTasks.length} tasks</span>
-                    </td>
-                    <td className="py-3 px-4">
-                      <span className="font-bold text-emerald-400">{member.slaScore}</span>
-                    </td>
-                    <td className="py-3 px-4">
-                      {memberTasks.length >= 5 ? (
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-800">
-                          Capacity Near Limit
+              {teamMembers
+                .filter(
+                  (member) =>
+                    member.includeInCapacityMatrix !== false &&
+                    member.level !== "Manager",
+                )
+                .map((member) => {
+                  const memberTasks = tasks.filter(
+                    (t) =>
+                      t.assignedTo === member.id && t.status !== "completed",
+                  );
+                  return (
+                    <tr
+                      key={member.id}
+                      className="hover:bg-slate-950/50 transition-colors"
+                    >
+                      <td className="py-3 px-4">
+                        <div className="font-bold text-white">
+                          {member.name}
+                        </div>
+                        <div className="text-[11px] text-slate-400">
+                          {member.role}
+                        </div>
+                      </td>
+                      <td className="py-3 px-4">
+                        <span
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded border ${member.badgeColor}`}
+                        >
+                          {member.level}
                         </span>
-                      ) : (
-                        <span className="text-[10px] font-medium px-2 py-0.5 rounded bg-emerald-950/60 text-emerald-400 border border-emerald-800/40">
-                          Optimal Capacity
+                      </td>
+                      <td className="py-3 px-4 font-semibold text-slate-100">
+                        {member.totalAUM}
+                      </td>
+                      <td className="py-3 px-4 text-slate-300">
+                        {member.clientsCount} Accounts
+                      </td>
+                      <td className="py-3 px-4">
+                        <span className="font-bold text-cyan-300">
+                          {memberTasks.length} tasks
                         </span>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
+                      </td>
+                      <td className="py-3 px-4">
+                        <span className="font-bold text-emerald-400">
+                          {member.slaScore}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4">
+                        {memberTasks.length >= 5 ? (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-800">
+                            Capacity Near Limit
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-medium px-2 py-0.5 rounded bg-emerald-950/60 text-emerald-400 border border-emerald-800/40">
+                            Optimal Capacity
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
             </tbody>
           </table>
         </div>
@@ -188,7 +279,8 @@ export default function PartnerOversight({
             Book-Wide Risk Heatmap
           </h3>
           <p className="text-xs text-slate-400 mt-0.5">
-            Where the fires are: allocation drift, idle-cash drag, and KYC status across every client
+            Where the fires are: allocation drift, idle-cash drag, and KYC
+            status across every client
           </p>
         </div>
         <div className="overflow-x-auto">
@@ -203,27 +295,40 @@ export default function PartnerOversight({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60">
-              {clientProfiles.map(c => {
+              {clientProfiles.map((c) => {
                 const drift = getAllocationDriftSeverity(c);
                 const idle = getIdleCashSeverity(c);
                 const kyc = getKycSeverity(c);
-                const rm = teamMembers.find(m => m.id === c.assignedRMId);
+                const rm = teamMembers.find((m) => m.id === c.assignedRMId);
                 return (
-                  <tr key={c.id} className="hover:bg-slate-950/50 transition-colors">
-                    <td className="py-2.5 px-3 font-semibold text-white">{c.name}</td>
-                    <td className="py-2.5 px-3 text-slate-400">{rm ? rm.name : '—'}</td>
+                  <tr
+                    key={c.id}
+                    className="hover:bg-slate-950/50 transition-colors"
+                  >
+                    <td className="py-2.5 px-3 font-semibold text-white">
+                      {c.name}
+                    </td>
+                    <td className="py-2.5 px-3 text-slate-400">
+                      {rm ? rm.name : "—"}
+                    </td>
                     <td className="py-2.5 px-3">
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${HEATMAP_COLORS[drift.level]}`}>
+                      <span
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded border ${HEATMAP_COLORS[drift.level]}`}
+                      >
                         {drift.label}
                       </span>
                     </td>
                     <td className="py-2.5 px-3">
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${HEATMAP_COLORS[idle.level]}`}>
+                      <span
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded border ${HEATMAP_COLORS[idle.level]}`}
+                      >
                         {idle.label}
                       </span>
                     </td>
                     <td className="py-2.5 px-3">
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${HEATMAP_COLORS[kyc.level]}`}>
+                      <span
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded border ${HEATMAP_COLORS[kyc.level]}`}
+                      >
                         {kyc.label}
                       </span>
                     </td>
@@ -247,30 +352,50 @@ export default function PartnerOversight({
               Scored without a manager needing to review the call themselves
             </p>
           </div>
-          <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700 flex items-center gap-1">
-            <FlaskConical className="w-3 h-3" /> Mock scoring — see CONTEXT.md
-          </span>
+          <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700 flex items-center gap-1"></span>
         </div>
         <div className="space-y-2.5">
-          {demoCallScenarios.map(sc => {
-            const client = clientProfiles.find(c => c.id === sc.clientId);
-            const rm = client ? teamMembers.find(m => m.id === client.assignedRMId) : null;
+          {demoCallScenarios.map((sc) => {
+            const client = clientProfiles.find((c) => c.id === sc.clientId);
+            const rm = client
+              ? teamMembers.find((m) => m.id === client.assignedRMId)
+              : null;
             const cq = sc.callQuality;
             if (!cq) return null;
             return (
-              <div key={sc.id} className="p-3 rounded-lg bg-slate-950 border border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-2 text-xs">
+              <div
+                key={sc.id}
+                className="p-3 rounded-lg bg-slate-950 border border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-2 text-xs"
+              >
                 <div>
-                  <div className="font-semibold text-white">{sc.clientName} <span className="text-slate-500 font-normal">— {rm ? rm.name : 'Unassigned'}</span></div>
-                  <div className="text-[11px] text-slate-400 mt-0.5">{cq.coachingNote}</div>
+                  <div className="font-semibold text-white">
+                    {sc.clientName}{" "}
+                    <span className="text-slate-500 font-normal">
+                      — {rm ? rm.name : "Unassigned"}
+                    </span>
+                  </div>
+                  <div className="text-[11px] text-slate-400 mt-0.5">
+                    {cq.coachingNote}
+                  </div>
                   <div className="flex items-center gap-2 mt-1 text-[10px]">
-                    <span className={cq.complianceMentioned ? 'text-emerald-400' : 'text-amber-400'}>
-                      {cq.complianceMentioned ? '✓ Compliance addressed' : '△ Compliance not mentioned'}
+                    <span
+                      className={
+                        cq.complianceMentioned
+                          ? "text-emerald-400"
+                          : "text-amber-400"
+                      }
+                    >
+                      {cq.complianceMentioned
+                        ? "✓ Compliance addressed"
+                        : "△ Compliance not mentioned"}
                     </span>
                     <span className="text-slate-600">•</span>
                     <span className="text-slate-400">Tone: {cq.tone}</span>
                   </div>
                 </div>
-                <span className={`text-sm font-black shrink-0 ${cq.score >= 8.5 ? 'text-emerald-400' : cq.score >= 7 ? 'text-amber-400' : 'text-rose-400'}`}>
+                <span
+                  className={`text-sm font-black shrink-0 ${cq.score >= 8.5 ? "text-emerald-400" : cq.score >= 7 ? "text-amber-400" : "text-rose-400"}`}
+                >
                   {cq.score.toFixed(1)}/10
                 </span>
               </div>
@@ -288,7 +413,8 @@ export default function PartnerOversight({
               Automated SEBI Compliance & Activity Audit Trail
             </h3>
             <p className="text-xs text-slate-400 mt-0.5">
-              Every client interaction, suitability check, and task dispatch generates a timestamped compliance log entry
+              Every client interaction, suitability check, and task dispatch
+              generates a timestamped compliance log entry
             </p>
           </div>
           <button
@@ -304,33 +430,47 @@ export default function PartnerOversight({
             <div className="p-3.5 rounded-lg bg-slate-950 border border-slate-800 text-xs text-slate-500">
               No backend audit events are available for this manager scope yet.
             </div>
-          ) : auditLogs.map((log, idx) => (
-            <div key={idx} className="p-3.5 rounded-lg bg-slate-950 border border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs">
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <span className="font-mono text-[10px] text-slate-500">{log.timestamp}</span>
-                  <span className="font-bold text-white">{log.event}</span>
-                  <span className="text-cyan-400 font-semibold">• {log.client}</span>
+          ) : (
+            auditLogs.map((log, idx) => (
+              <div
+                key={idx}
+                className="p-3.5 rounded-lg bg-slate-950 border border-slate-800 flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs"
+              >
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-[10px] text-slate-500">
+                      {log.timestamp}
+                    </span>
+                    <span className="font-bold text-white">{log.event}</span>
+                    <span className="text-cyan-400 font-semibold">
+                      • {log.client}
+                    </span>
+                  </div>
+                  <p className="text-slate-300 text-[11px] leading-relaxed">
+                    {log.detail}
+                  </p>
+                  <div className="text-[10px] text-slate-400">
+                    Advisor:{" "}
+                    <span className="text-slate-200 font-medium">
+                      {log.advisor}
+                    </span>
+                  </div>
                 </div>
-                <p className="text-slate-300 text-[11px] leading-relaxed">
-                  {log.detail}
-                </p>
-                <div className="text-[10px] text-slate-400">
-                  Advisor: <span className="text-slate-200 font-medium">{log.advisor}</span>
-                </div>
-              </div>
 
-              <div className="shrink-0">
-                <span className={`text-[10px] font-bold px-2.5 py-1 rounded border ${
-                  log.complianceStatus.includes('URGENT') 
-                    ? 'bg-rose-950 text-rose-300 border-rose-800' 
-                    : 'bg-emerald-950/60 text-emerald-300 border-emerald-800/50'
-                }`}>
-                  {log.complianceStatus}
-                </span>
+                <div className="shrink-0">
+                  <span
+                    className={`text-[10px] font-bold px-2.5 py-1 rounded border ${
+                      log.complianceStatus.includes("URGENT")
+                        ? "bg-rose-950 text-rose-300 border-rose-800"
+                        : "bg-emerald-950/60 text-emerald-300 border-emerald-800/50"
+                    }`}
+                  >
+                    {log.complianceStatus}
+                  </span>
+                </div>
               </div>
-            </div>
-          ))}
+            ))
+          )}
         </div>
       </div>
     </div>

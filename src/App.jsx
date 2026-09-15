@@ -752,10 +752,6 @@ export default function App() {
                   <BookOpen className="w-4 h-4 text-cyan-400" />
                   House View Reference
                 </h3>
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-500 border border-slate-700 flex items-center gap-1 w-fit mt-1">
-                  <FlaskConical className="w-3 h-3" /> Mock content — see
-                  CONTEXT.md
-                </span>
               </div>
               <button
                 onClick={() => {

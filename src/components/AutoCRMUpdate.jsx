@@ -1,38 +1,60 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from "react";
 import {
-  Sparkles, Mic, FileText, CheckCircle2, ArrowRight, Copy, Check,
-  Send, AlertCircle, RefreshCw, Layers, ShieldCheck, Database,
-  MessageSquare, Mail, Building, Plus, ArrowUpRight, Zap, Phone,
-  Pencil, Lock, Clock
-} from 'lucide-react';
+  Sparkles,
+  Mic,
+  FileText,
+  CheckCircle2,
+  ArrowRight,
+  Copy,
+  Check,
+  Send,
+  AlertCircle,
+  RefreshCw,
+  Layers,
+  ShieldCheck,
+  Database,
+  MessageSquare,
+  Mail,
+  Building,
+  Plus,
+  ArrowUpRight,
+  Zap,
+  Phone,
+  Pencil,
+  Lock,
+  Clock,
+} from "lucide-react";
 import {
   confirmCrmDraft,
   createCallNote,
   dispatchCrmTasks,
   syncCrmDraft,
   synthesizeCallNote,
-  updateCrmDraft
-} from '../services/api';
-import { copyTextToClipboard } from '../utils/frontendState';
+  updateCrmDraft,
+} from "../services/api";
+import { copyTextToClipboard } from "../utils/frontendState";
 
 function normalizeParsedData(parsedData) {
   if (!parsedData) return parsedData;
   return {
     ...parsedData,
-    liquiditySignals: (parsedData.liquiditySignals || []).map(signal => ({
+    liquiditySignals: (parsedData.liquiditySignals || []).map((signal) => ({
       ...signal,
-      amount: signal.amount || signal.amountDisplay
+      amount: signal.amount || signal.amountDisplay,
     })),
-    generatedOpsTasks: (parsedData.generatedOpsTasks || []).map(task => ({
+    generatedOpsTasks: (parsedData.generatedOpsTasks || []).map((task) => ({
       ...task,
-      assignedTo: task.assignedTo || task.assignedToUserId || 'ops-1',
-      assignedToName: task.assignedToName || 'Central Ops & Compliance',
-      clientAUM: task.clientAUM || '—',
-      clientTier: task.clientTier || 'Client',
-      slaCountdown: task.slaCountdown || '3h 00m',
-      slaStatus: task.slaStatus || 'urgent',
-      status: task.status === 'suggested' ? 'pending_ops' : (task.status || 'pending_ops')
-    }))
+      assignedTo: task.assignedTo || task.assignedToUserId || "ops-1",
+      assignedToName: task.assignedToName || "Central Ops & Compliance",
+      clientAUM: task.clientAUM || "—",
+      clientTier: task.clientTier || "Client",
+      slaCountdown: task.slaCountdown || "3h 00m",
+      slaStatus: task.slaStatus || "urgent",
+      status:
+        task.status === "suggested"
+          ? "pending_ops"
+          : task.status || "pending_ops",
+    })),
   };
 }
 
@@ -46,25 +68,31 @@ export default function AutoCRMUpdate({
   onNavigateToAllocation,
   selectedClientId,
   onSelectClient,
-  onShowToast
+  onShowToast,
 }) {
-  const isManagerOrOps = currentRM.level === 'Manager' || currentRM.level === 'Operations';
+  const isManagerOrOps =
+    currentRM.level === "Manager" || currentRM.level === "Operations";
 
   // Strict client book isolation, matching the Task Desk and Co-Pilot Dossier:
   // RMs only see call scenarios for clients assigned to them
   const accessibleScenarios = isManagerOrOps
     ? demoCallScenarios
-    : demoCallScenarios.filter(s => {
-        const client = clientProfiles.find(c => c.id === s.clientId);
+    : demoCallScenarios.filter((s) => {
+        const client = clientProfiles.find((c) => c.id === s.clientId);
         return client && client.assignedRMId === currentRM.id;
       });
 
-  const initialScenario = accessibleScenarios.find(s => s.clientId === selectedClientId) || accessibleScenarios[0] || null;
+  const initialScenario =
+    accessibleScenarios.find((s) => s.clientId === selectedClientId) ||
+    accessibleScenarios[0] ||
+    null;
 
   const [activeScenario, setActiveScenario] = useState(initialScenario);
-  const [rawText, setRawText] = useState(initialScenario?.rawNotes || '');
+  const [rawText, setRawText] = useState(initialScenario?.rawNotes || "");
   const [isSynthesizing, setIsSynthesizing] = useState(false);
-  const [parsedData, setParsedData] = useState(normalizeParsedData(initialScenario?.parsedResult));
+  const [parsedData, setParsedData] = useState(
+    normalizeParsedData(initialScenario?.parsedResult),
+  );
   const [isRecording, setIsRecording] = useState(false);
   const [copiedType, setCopiedType] = useState(null);
   const [isSyncedToCRM, setIsSyncedToCRM] = useState(false);
@@ -73,20 +101,26 @@ export default function AutoCRMUpdate({
   const [syncError, setSyncError] = useState(null);
   const [tasksDispatched, setTasksDispatched] = useState(false);
   const [isDraftConfirmed, setIsDraftConfirmed] = useState(false);
-  const [editedSummary, setEditedSummary] = useState(initialScenario?.parsedResult?.summary || '');
+  const [editedSummary, setEditedSummary] = useState(
+    initialScenario?.parsedResult?.summary || "",
+  );
 
-  const activeClient = activeScenario ? clientProfiles.find(c => c.id === activeScenario.clientId) : null;
+  const activeClient = activeScenario
+    ? clientProfiles.find((c) => c.id === activeScenario.clientId)
+    : null;
 
   // Sync if selectedClientId changes from another tab, or if switching RM persona
   // makes the current scenario inaccessible
   useEffect(() => {
-    const match = accessibleScenarios.find(s => s.clientId === selectedClientId);
+    const match = accessibleScenarios.find(
+      (s) => s.clientId === selectedClientId,
+    );
     const next = match || accessibleScenarios[0];
     if (!next) {
       setActiveScenario(null);
-      setRawText('');
+      setRawText("");
       setParsedData(null);
-      setEditedSummary('');
+      setEditedSummary("");
       setIsSyncedToCRM(false);
       setCrmRecordId(null);
       setSyncError(null);
@@ -125,12 +159,18 @@ export default function AutoCRMUpdate({
 
   const handleSynthesize = async () => {
     if (!apiToken || !activeScenario) {
-      onShowToast('Backend session and scenario are required before synthesis.');
+      onShowToast(
+        "Backend session and scenario are required before synthesis.",
+      );
       return;
     }
     setIsSynthesizing(true);
     try {
-      const note = await createCallNote(apiToken, activeScenario.clientId, rawText);
+      const note = await createCallNote(
+        apiToken,
+        activeScenario.clientId,
+        rawText,
+      );
       let nextParsed = await synthesizeCallNote(apiToken, note.id);
       nextParsed = normalizeParsedData(nextParsed);
       setParsedData(nextParsed);
@@ -140,7 +180,9 @@ export default function AutoCRMUpdate({
       setSyncError(null);
       setTasksDispatched(false);
       setIsDraftConfirmed(false);
-      onShowToast('Notes parsed into a draft CRM record. Review the summary before syncing.');
+      onShowToast(
+        "Notes parsed into a draft CRM record. Review the summary before syncing.",
+      );
     } catch (error) {
       onShowToast(`Backend synthesis failed: ${error.message}`);
     } finally {
@@ -151,30 +193,41 @@ export default function AutoCRMUpdate({
   const handleConfirmDraft = async () => {
     try {
       if (apiToken && parsedData?.crmDraftId) {
-        await updateCrmDraft(apiToken, parsedData.crmDraftId, { summary: editedSummary });
+        await updateCrmDraft(apiToken, parsedData.crmDraftId, {
+          summary: editedSummary,
+        });
         await confirmCrmDraft(apiToken, parsedData.crmDraftId);
       }
     } catch (error) {
       onShowToast(`Backend draft confirmation failed: ${error.message}`);
       return;
     }
-    setParsedData(prev => ({ ...prev, summary: editedSummary }));
+    setParsedData((prev) => ({ ...prev, summary: editedSummary }));
     setIsDraftConfirmed(true);
-    onShowToast('Summary confirmed. Ready to sync and dispatch.');
+    onShowToast("Summary confirmed. Ready to sync and dispatch.");
   };
 
   const ensureBackendDraft = async () => {
-    if (!apiToken || !activeScenario) throw new Error('Backend session and scenario are required');
+    if (!apiToken || !activeScenario)
+      throw new Error("Backend session and scenario are required");
     if (parsedData?.crmDraftId) return parsedData;
 
-    const note = await createCallNote(apiToken, activeScenario.clientId, rawText);
-    const nextParsed = normalizeParsedData(await synthesizeCallNote(apiToken, note.id));
-    await updateCrmDraft(apiToken, nextParsed.crmDraftId, { summary: editedSummary || nextParsed.summary });
+    const note = await createCallNote(
+      apiToken,
+      activeScenario.clientId,
+      rawText,
+    );
+    const nextParsed = normalizeParsedData(
+      await synthesizeCallNote(apiToken, note.id),
+    );
+    await updateCrmDraft(apiToken, nextParsed.crmDraftId, {
+      summary: editedSummary || nextParsed.summary,
+    });
     await confirmCrmDraft(apiToken, nextParsed.crmDraftId);
 
     const confirmedParsed = {
       ...nextParsed,
-      summary: editedSummary || nextParsed.summary
+      summary: editedSummary || nextParsed.summary,
     };
     setParsedData(confirmedParsed);
     setEditedSummary(confirmedParsed.summary);
@@ -183,17 +236,26 @@ export default function AutoCRMUpdate({
   };
 
   const handleDispatchOpsTasks = async () => {
-    if (isDraftConfirmed && parsedData && parsedData.generatedOpsTasks && !tasksDispatched) {
+    if (
+      isDraftConfirmed &&
+      parsedData &&
+      parsedData.generatedOpsTasks &&
+      !tasksDispatched
+    ) {
       try {
         const draft = await ensureBackendDraft();
-        const result = await dispatchCrmTasks(apiToken, draft.crmDraftId, `${draft.crmDraftId}-dispatch`);
+        const result = await dispatchCrmTasks(
+          apiToken,
+          draft.crmDraftId,
+          `${draft.crmDraftId}-dispatch`,
+        );
         setTasksDispatched(true);
         await onBackendRefresh?.();
         onNavigateToAllocation?.();
         onShowToast(
           result.createdTaskIds.length > 0
             ? `Backend dispatched ${result.createdTaskIds.length} task(s) to Standup Board.`
-            : 'These tasks were already on the Standup Board.'
+            : "These tasks were already on the Standup Board.",
         );
       } catch (error) {
         onShowToast(`Backend dispatch failed: ${error.message}`);
@@ -206,7 +268,7 @@ export default function AutoCRMUpdate({
     setSyncError(null);
 
     if (!apiToken) {
-      onShowToast('Backend session is required before CRM sync.');
+      onShowToast("Backend session is required before CRM sync.");
       return;
     }
 
@@ -219,7 +281,7 @@ export default function AutoCRMUpdate({
       await onBackendRefresh?.();
       setCrmRecordId(result.externalRecordId);
       setIsSyncedToCRM(true);
-      onShowToast('Synced to CRM. Activity log & pipeline signals recorded.');
+      onShowToast("Synced to CRM. Activity log & pipeline signals recorded.");
     } catch (error) {
       setSyncError(error.message);
       onShowToast(`CRM sync failed: ${error.message}`);
@@ -254,7 +316,9 @@ export default function AutoCRMUpdate({
               </h2>
             </div>
             <p className="text-xs text-slate-400 mt-1">
-              Turns rough call notes into a structured CRM record, ops tickets, and client follow-up drafts — review and dispatch each step yourself below.
+              Turns rough call notes into a structured CRM record, ops tickets,
+              and client follow-up drafts — review and dispatch each step
+              yourself below.
             </p>
           </div>
         </div>
@@ -267,7 +331,9 @@ export default function AutoCRMUpdate({
             <Zap className="w-3.5 h-3.5 text-amber-400" />
             Sample Call Scenarios:
           </span>
-          <span className="text-[11px] text-cyan-400 font-medium">Click any scenario to test synthesis</span>
+          <span className="text-[11px] text-cyan-400 font-medium">
+            Click any scenario to test synthesis
+          </span>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -277,17 +343,21 @@ export default function AutoCRMUpdate({
               onClick={() => handleSelectScenario(sc)}
               className={`p-3 rounded-lg border text-left transition-all ${
                 activeScenario?.id === sc.id
-                  ? 'bg-cyan-950/40 border-cyan-500 shadow-md shadow-cyan-600/10'
-                  : 'bg-slate-950 border-slate-800 hover:border-slate-700'
+                  ? "bg-cyan-950/40 border-cyan-500 shadow-md shadow-cyan-600/10"
+                  : "bg-slate-950 border-slate-800 hover:border-slate-700"
               }`}
             >
               <div className="flex items-center justify-between">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-cyan-400">
                   {sc.momentType}
                 </span>
-                <span className="text-[10px] text-slate-400 font-semibold">{sc.clientName}</span>
+                <span className="text-[10px] text-slate-400 font-semibold">
+                  {sc.clientName}
+                </span>
               </div>
-              <h4 className="text-xs font-bold text-white mt-1 line-clamp-1">{sc.title}</h4>
+              <h4 className="text-xs font-bold text-white mt-1 line-clamp-1">
+                {sc.title}
+              </h4>
               <p className="text-[11px] text-slate-400 mt-1 line-clamp-2 leading-relaxed">
                 {sc.rawNotes}
               </p>
@@ -301,18 +371,25 @@ export default function AutoCRMUpdate({
         )}
 
         <div className="pt-2 border-t border-slate-800/60 flex flex-wrap items-center gap-2">
-          <span className="text-[10px] text-slate-500 uppercase font-semibold">Playbook library:</span>
-          {playbookLibrary.map(p => (
+          <span className="text-[10px] text-slate-500 uppercase font-semibold">
+            Playbook library:
+          </span>
+          {playbookLibrary.map((p) => (
             <span
               key={p.momentType}
               className={`text-[10px] px-2 py-0.5 rounded border font-medium ${
-                p.status === 'demo'
-                  ? 'bg-cyan-950/40 text-cyan-300 border-cyan-800/60'
-                  : 'bg-slate-900 text-slate-500 border-slate-800'
+                p.status === "demo"
+                  ? "bg-cyan-950/40 text-cyan-300 border-cyan-800/60"
+                  : "bg-slate-900 text-slate-500 border-slate-800"
               }`}
-              title={p.status === 'demo' ? 'Demo scenario available above' : 'Not yet built'}
+              title={
+                p.status === "demo"
+                  ? "Demo scenario available above"
+                  : "Not yet built"
+              }
             >
-              {p.momentType}{p.status !== 'demo' ? ' (coming soon)' : ''}
+              {p.momentType}
+              {p.status !== "demo" ? " (coming soon)" : ""}
             </span>
           ))}
         </div>
@@ -341,28 +418,31 @@ export default function AutoCRMUpdate({
                   const wasRecording = isRecording;
                   setIsRecording(!isRecording);
                   if (!wasRecording) {
-                    onShowToast('Simulating live speech-to-text audio dictation...');
+                    onShowToast(
+                      "Simulating live speech-to-text audio dictation...",
+                    );
                   } else {
-                    setRawText(activeScenario?.rawNotes || '');
-                    onShowToast('Mock transcription complete — see CONTEXT.md "Dev Build Required"');
+                    setRawText(activeScenario?.rawNotes || "");
                   }
                 }}
                 disabled={!activeScenario}
                 className={`text-xs px-2.5 py-1 rounded-md font-medium flex items-center gap-1.5 transition-colors ${
-                  isRecording 
-                    ? 'bg-rose-600 text-white animate-pulse' 
-                    : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
+                  isRecording
+                    ? "bg-rose-600 text-white animate-pulse"
+                    : "bg-slate-800 hover:bg-slate-700 text-slate-300"
                 }`}
               >
                 <Mic className="w-3.5 h-3.5" />
-                <span>{isRecording ? 'Listening (IST)...' : 'Voice Memo'}</span>
+                <span>{isRecording ? "Listening (IST)..." : "Voice Memo"}</span>
               </button>
             </div>
 
             {/* Client Context Pill */}
             <div className="flex items-center justify-between bg-slate-950 px-3 py-2 rounded-lg border border-slate-800 text-xs">
               <span className="text-slate-400">Target Client:</span>
-              <span className="font-bold text-cyan-300">{activeScenario?.clientName || 'Waiting for backend'}</span>
+              <span className="font-bold text-cyan-300">
+                {activeScenario?.clientName || "Waiting for backend"}
+              </span>
             </div>
 
             {/* Textarea */}
@@ -375,7 +455,8 @@ export default function AutoCRMUpdate({
                 className="w-full bg-slate-950 border border-slate-800 focus:border-cyan-500 rounded-lg p-3 text-xs text-slate-200 leading-relaxed focus:outline-none resize-none font-mono"
               />
               <p className="text-[11px] text-slate-500 mt-1">
-                You can freely edit these notes to test how the synthesizer extracts data.
+                You can freely edit these notes to test how the synthesizer
+                extracts data.
               </p>
             </div>
 
@@ -383,7 +464,9 @@ export default function AutoCRMUpdate({
             <button
               onClick={handleSynthesize}
               disabled={isSynthesizing || !activeScenario}
-              title={!activeScenario ? 'No backend scenario available' : undefined}
+              title={
+                !activeScenario ? "No backend scenario available" : undefined
+              }
               className="w-full bg-cyan-600 hover:bg-cyan-500 disabled:bg-cyan-900 text-white font-bold text-xs py-3 rounded-lg flex items-center justify-center gap-2 shadow-lg shadow-cyan-600/20 transition-all cursor-pointer"
             >
               {isSynthesizing ? (
@@ -410,39 +493,60 @@ export default function AutoCRMUpdate({
                 <div className="flex items-center justify-between pb-3 border-b border-slate-800">
                   <div className="flex items-center gap-2">
                     <Database className="w-4 h-4 text-cyan-400" />
-                    <h3 className="text-sm font-bold text-white">Institutional CRM Interaction Record</h3>
+                    <h3 className="text-sm font-bold text-white">
+                      Institutional CRM Interaction Record
+                    </h3>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className={`text-[10px] px-2 py-0.5 rounded font-semibold border ${
-                      isSyncedToCRM
-                        ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                    <span
+                      className={`text-[10px] px-2 py-0.5 rounded font-semibold border ${
+                        isSyncedToCRM
+                          ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                          : syncError
+                            ? "bg-rose-500/10 text-rose-400 border-rose-500/20"
+                            : "bg-amber-500/10 text-amber-400 border-amber-500/20"
+                      }`}
+                    >
+                      Audit Status:{" "}
+                      {isSyncedToCRM
+                        ? "Synced"
                         : syncError
-                          ? 'bg-rose-500/10 text-rose-400 border-rose-500/20'
-                          : 'bg-amber-500/10 text-amber-400 border-amber-500/20'
-                    }`}>
-                      Audit Status: {isSyncedToCRM ? 'Synced' : syncError ? 'Sync Failed' : 'Draft, Not Yet Synced'}
+                          ? "Sync Failed"
+                          : "Draft, Not Yet Synced"}
                     </span>
                     <button
                       onClick={handleSyncToCRM}
                       disabled={isSyncedToCRM || !isDraftConfirmed || isSyncing}
-                      title={!isDraftConfirmed ? 'Confirm the summary above first' : undefined}
+                      title={
+                        !isDraftConfirmed
+                          ? "Confirm the summary above first"
+                          : undefined
+                      }
                       className={`text-xs px-3 py-1 rounded font-semibold flex items-center gap-1 transition-colors ${
                         isSyncedToCRM
-                          ? 'bg-emerald-950 text-emerald-400 border border-emerald-800'
+                          ? "bg-emerald-950 text-emerald-400 border border-emerald-800"
                           : syncError
-                            ? 'bg-rose-600 hover:bg-rose-500 text-white'
+                            ? "bg-rose-600 hover:bg-rose-500 text-white"
                             : isDraftConfirmed
-                              ? 'bg-cyan-600 hover:bg-cyan-500 text-white'
-                              : 'bg-slate-800 text-slate-500 cursor-not-allowed'
+                              ? "bg-cyan-600 hover:bg-cyan-500 text-white"
+                              : "bg-slate-800 text-slate-500 cursor-not-allowed"
                       }`}
                     >
                       {isSyncedToCRM ? (
                         <CheckCircle2 className="w-3.5 h-3.5" />
                       ) : (
-                        <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+                        <RefreshCw
+                          className={`w-3.5 h-3.5 ${isSyncing ? "animate-spin" : ""}`}
+                        />
                       )}
                       <span>
-                        {isSyncedToCRM ? 'Synced to CRM' : isSyncing ? 'Syncing...' : syncError ? 'Retry Sync' : 'Sync to CRM'}
+                        {isSyncedToCRM
+                          ? "Synced to CRM"
+                          : isSyncing
+                            ? "Syncing..."
+                            : syncError
+                              ? "Retry Sync"
+                              : "Sync to CRM"}
                       </span>
                     </button>
                   </div>
@@ -451,20 +555,36 @@ export default function AutoCRMUpdate({
                 {/* Metadata Strip */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
                   <div className="p-2 rounded bg-slate-950 border border-slate-800/80">
-                    <span className="text-[10px] text-slate-500 uppercase block">Client</span>
-                    <span className="font-semibold text-white truncate block">{activeScenario?.clientName || 'Backend scenario'}</span>
+                    <span className="text-[10px] text-slate-500 uppercase block">
+                      Client
+                    </span>
+                    <span className="font-semibold text-white truncate block">
+                      {activeScenario?.clientName || "Backend scenario"}
+                    </span>
                   </div>
                   <div className="p-2 rounded bg-slate-950 border border-slate-800/80">
-                    <span className="text-[10px] text-slate-500 uppercase block">Timestamp</span>
-                    <span className="font-semibold text-white font-mono">05-09-26 08:48 IST</span>
+                    <span className="text-[10px] text-slate-500 uppercase block">
+                      Timestamp
+                    </span>
+                    <span className="font-semibold text-white font-mono">
+                      05-09-26 08:48 IST
+                    </span>
                   </div>
                   <div className="p-2 rounded bg-slate-950 border border-slate-800/80">
-                    <span className="text-[10px] text-slate-500 uppercase block">Channel</span>
-                    <span className="font-semibold text-white">Advisory Call</span>
+                    <span className="text-[10px] text-slate-500 uppercase block">
+                      Channel
+                    </span>
+                    <span className="font-semibold text-white">
+                      Advisory Call
+                    </span>
                   </div>
                   <div className="p-2 rounded bg-slate-950 border border-slate-800/80">
-                    <span className="text-[10px] text-slate-500 uppercase block">Stage Update</span>
-                    <span className="font-semibold text-emerald-400 truncate block">{parsedData.crmStageUpdate}</span>
+                    <span className="text-[10px] text-slate-500 uppercase block">
+                      Stage Update
+                    </span>
+                    <span className="font-semibold text-emerald-400 truncate block">
+                      {parsedData.crmStageUpdate}
+                    </span>
                   </div>
                 </div>
 
@@ -473,8 +593,12 @@ export default function AutoCRMUpdate({
                     <div className="flex items-center gap-2">
                       <CheckCircle2 className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
                       <div>
-                        <span className="text-cyan-200 font-semibold block">CRM confirmation received</span>
-                        <span className="text-[10px] text-slate-500 font-mono">External Record ID: {crmRecordId}</span>
+                        <span className="text-cyan-200 font-semibold block">
+                          CRM confirmation received
+                        </span>
+                        <span className="text-[10px] text-slate-500 font-mono">
+                          External Record ID: {crmRecordId}
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -486,8 +610,12 @@ export default function AutoCRMUpdate({
                     <div className="flex items-center gap-2">
                       <AlertCircle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
                       <div>
-                        <span className="text-rose-200 font-semibold block">CRM sync failed — nothing was recorded</span>
-                        <span className="text-[10px] text-rose-300/80">{syncError}</span>
+                        <span className="text-rose-200 font-semibold block">
+                          CRM sync failed — nothing was recorded
+                        </span>
+                        <span className="text-[10px] text-rose-300/80">
+                          {syncError}
+                        </span>
                       </div>
                     </div>
                     <button
@@ -495,7 +623,9 @@ export default function AutoCRMUpdate({
                       disabled={isSyncing}
                       className="text-[11px] font-semibold text-white bg-rose-600 hover:bg-rose-500 px-2.5 py-1 rounded shrink-0 flex items-center gap-1"
                     >
-                      <RefreshCw className={`w-3 h-3 ${isSyncing ? 'animate-spin' : ''}`} />
+                      <RefreshCw
+                        className={`w-3 h-3 ${isSyncing ? "animate-spin" : ""}`}
+                      />
                       <span>Retry</span>
                     </button>
                   </div>
@@ -505,7 +635,8 @@ export default function AutoCRMUpdate({
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
                     <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                      Executive Summary — {isDraftConfirmed ? 'Confirmed' : 'Review Before Syncing'}
+                      Executive Summary —{" "}
+                      {isDraftConfirmed ? "Confirmed" : "Review Before Syncing"}
                     </span>
                     {isDraftConfirmed && (
                       <button
@@ -536,7 +667,10 @@ export default function AutoCRMUpdate({
                         <CheckCircle2 className="w-3.5 h-3.5" />
                         <span>Confirm Summary</span>
                       </button>
-                      <p className="text-[10px] text-slate-500">The RM reviews and edits this before it can be synced to CRM or dispatched — nothing is logged automatically.</p>
+                      <p className="text-[10px] text-slate-500">
+                        The RM reviews and edits this before it can be synced to
+                        CRM or dispatched — nothing is logged automatically.
+                      </p>
                     </div>
                   )}
                 </div>
@@ -544,40 +678,55 @@ export default function AutoCRMUpdate({
                 {/* Sentiment & Suitability Guardrail */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="p-3 rounded-lg bg-slate-950 border border-slate-800 text-xs">
-                    <span className="text-[10px] text-slate-500 uppercase font-semibold block">Client Sentiment</span>
-                    <span className="font-medium text-amber-300 mt-0.5 block">{parsedData.sentiment}</span>
+                    <span className="text-[10px] text-slate-500 uppercase font-semibold block">
+                      Client Sentiment
+                    </span>
+                    <span className="font-medium text-amber-300 mt-0.5 block">
+                      {parsedData.sentiment}
+                    </span>
                   </div>
 
                   <div className="p-3 rounded-lg bg-emerald-950/20 border border-emerald-800/40 text-xs">
                     <span className="text-[10px] text-emerald-400 uppercase font-semibold block flex items-center gap-1">
-                      <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" /> Mandate Alignment Check
+                      <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />{" "}
+                      Mandate Alignment Check
                     </span>
-                    <span className="text-[11px] text-emerald-200 mt-0.5 block">{parsedData.suitabilityGuardrail}</span>
+                    <span className="text-[11px] text-emerald-200 mt-0.5 block">
+                      {parsedData.suitabilityGuardrail}
+                    </span>
                   </div>
                 </div>
 
                 {/* Liquidity Inflow Signals */}
-                {parsedData.liquiditySignals && parsedData.liquiditySignals.length > 0 && (
-                  <div className="space-y-2">
-                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-                      <Zap className="w-3.5 h-3.5 text-emerald-400" />
-                      Extracted Capital Inflow & Pipeline Signals:
-                    </span>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      {parsedData.liquiditySignals.map((sig, sIdx) => (
-                        <div key={sIdx} className="p-2.5 rounded-lg bg-emerald-950/20 border border-emerald-800/30 text-xs flex items-center justify-between">
-                          <div>
-                            <span className="text-sm font-bold text-emerald-400">{sig.amount}</span>
-                            <span className="text-[10px] text-slate-400 block">{sig.asset}</span>
+                {parsedData.liquiditySignals &&
+                  parsedData.liquiditySignals.length > 0 && (
+                    <div className="space-y-2">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                        <Zap className="w-3.5 h-3.5 text-emerald-400" />
+                        Extracted Capital Inflow & Pipeline Signals:
+                      </span>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {parsedData.liquiditySignals.map((sig, sIdx) => (
+                          <div
+                            key={sIdx}
+                            className="p-2.5 rounded-lg bg-emerald-950/20 border border-emerald-800/30 text-xs flex items-center justify-between"
+                          >
+                            <div>
+                              <span className="text-sm font-bold text-emerald-400">
+                                {sig.amount}
+                              </span>
+                              <span className="text-[10px] text-slate-400 block">
+                                {sig.asset}
+                              </span>
+                            </div>
+                            <span className="text-[10px] px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-300 font-medium">
+                              {sig.status}
+                            </span>
                           </div>
-                          <span className="text-[10px] px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-300 font-medium">
-                            {sig.status}
-                          </span>
-                        </div>
-                      ))}
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
               </div>
 
               {/* Generated Ops Tasks Section */}
@@ -585,51 +734,83 @@ export default function AutoCRMUpdate({
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Layers className="w-4 h-4 text-fuchsia-400" />
-                    <h3 className="text-sm font-bold text-white">Auto-Extracted Operations Deliverables</h3>
+                    <h3 className="text-sm font-bold text-white">
+                      Auto-Extracted Operations Deliverables
+                    </h3>
                   </div>
 
                   <button
                     onClick={handleDispatchOpsTasks}
-                    disabled={tasksDispatched || !isDraftConfirmed || parsedData.generatedOpsTasks.length === 0}
+                    disabled={
+                      tasksDispatched ||
+                      !isDraftConfirmed ||
+                      parsedData.generatedOpsTasks.length === 0
+                    }
                     title={
                       !isDraftConfirmed
-                        ? 'Confirm the summary above first'
+                        ? "Confirm the summary above first"
                         : parsedData.generatedOpsTasks.length === 0
-                        ? 'No ops tasks were detected in these notes'
-                        : undefined
+                          ? "No ops tasks were detected in these notes"
+                          : undefined
                     }
                     className={`text-xs px-3 py-1.5 rounded-lg font-bold flex items-center gap-1.5 transition-all ${
-                      tasksDispatched || !isDraftConfirmed || parsedData.generatedOpsTasks.length === 0
-                        ? 'bg-slate-800 text-slate-500 cursor-not-allowed'
-                        : 'bg-fuchsia-600 hover:bg-fuchsia-500 text-white shadow-md shadow-fuchsia-600/20'
+                      tasksDispatched ||
+                      !isDraftConfirmed ||
+                      parsedData.generatedOpsTasks.length === 0
+                        ? "bg-slate-800 text-slate-500 cursor-not-allowed"
+                        : "bg-fuchsia-600 hover:bg-fuchsia-500 text-white shadow-md shadow-fuchsia-600/20"
                     }`}
                   >
-                    {tasksDispatched ? <Check className="w-3.5 h-3.5" /> : <Plus className="w-3.5 h-3.5" />}
-                    <span>{tasksDispatched ? 'Dispatched to Standup Board' : 'Dispatch to Standup Board'}</span>
+                    {tasksDispatched ? (
+                      <Check className="w-3.5 h-3.5" />
+                    ) : (
+                      <Plus className="w-3.5 h-3.5" />
+                    )}
+                    <span>
+                      {tasksDispatched
+                        ? "Dispatched to Standup Board"
+                        : "Dispatch to Standup Board"}
+                    </span>
                   </button>
                 </div>
 
                 {parsedData.generatedOpsTasks.length > 0 ? (
                   <div className="space-y-2">
                     {parsedData.generatedOpsTasks.map((t, idx) => (
-                      <div key={idx} className="p-3 rounded-lg bg-slate-950 border border-slate-800 flex items-center justify-between text-xs">
+                      <div
+                        key={idx}
+                        className="p-3 rounded-lg bg-slate-950 border border-slate-800 flex items-center justify-between text-xs"
+                      >
                         <div>
-                          <div className="font-semibold text-slate-200">{t.title}</div>
+                          <div className="font-semibold text-slate-200">
+                            {t.title}
+                          </div>
                           <div className="text-[11px] text-slate-400 flex items-center gap-2 mt-0.5">
-                            <span>Assignee: <strong className="text-fuchsia-300">{t.assignedToName || 'Central Ops'}</strong></span>
+                            <span>
+                              Assignee:{" "}
+                              <strong className="text-fuchsia-300">
+                                {t.assignedToName || "Central Ops"}
+                              </strong>
+                            </span>
                             <span>•</span>
-                            <span>Priority: <strong className="text-amber-400">{t.priority}</strong></span>
+                            <span>
+                              Priority:{" "}
+                              <strong className="text-amber-400">
+                                {t.priority}
+                              </strong>
+                            </span>
                           </div>
                         </div>
                         <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700 font-mono">
-                          SLA: {t.slaCountdown || 'Today'}
+                          SLA: {t.slaCountdown || "Today"}
                         </span>
                       </div>
                     ))}
                   </div>
                 ) : (
                   <div className="p-3 rounded-lg bg-slate-950 border border-slate-800 text-xs text-slate-500">
-                    No follow-up ops tasks were detected in these notes. Log the required action manually with Central Ops if one is needed.
+                    No follow-up ops tasks were detected in these notes. Log the
+                    required action manually with Central Ops if one is needed.
                   </div>
                 )}
               </div>
@@ -641,22 +822,35 @@ export default function AutoCRMUpdate({
                     <MessageSquare className="w-4 h-4 text-emerald-400" />
                     Pre-Drafted Client Follow-Up Comms
                   </h3>
-                  <span className="text-xs text-slate-400 font-medium">Copy & Send Manually</span>
+                  <span className="text-xs text-slate-400 font-medium">
+                    Copy & Send Manually
+                  </span>
                 </div>
 
                 {/* WhatsApp Box */}
                 <div className="p-4 rounded-lg bg-emerald-950/20 border border-emerald-800/40 space-y-2">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
-                      <MessageSquare className="w-3.5 h-3.5 text-emerald-400" /> WhatsApp Message Draft
+                      <MessageSquare className="w-3.5 h-3.5 text-emerald-400" />{" "}
+                      WhatsApp Message Draft
                     </span>
                     <div className="flex items-center gap-1.5">
                       <button
-                        onClick={() => handleCopy(parsedData.whatsappDraft, 'WhatsApp draft')}
+                        onClick={() =>
+                          handleCopy(parsedData.whatsappDraft, "WhatsApp draft")
+                        }
                         className="text-xs text-emerald-400 hover:text-emerald-300 bg-emerald-950/60 border border-emerald-800/60 px-2.5 py-1 rounded flex items-center gap-1 transition-colors font-medium"
                       >
-                        {copiedType === 'WhatsApp draft' ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-                        <span>{copiedType === 'WhatsApp draft' ? 'Copied' : 'Copy WhatsApp'}</span>
+                        {copiedType === "WhatsApp draft" ? (
+                          <Check className="w-3 h-3" />
+                        ) : (
+                          <Copy className="w-3 h-3" />
+                        )}
+                        <span>
+                          {copiedType === "WhatsApp draft"
+                            ? "Copied"
+                            : "Copy WhatsApp"}
+                        </span>
                       </button>
                       {activeClient?.phone && (
                         <a
@@ -677,30 +871,49 @@ export default function AutoCRMUpdate({
                       {parsedData.whatsappDraft}
                     </div>
                     <div className="max-w-[85%] ml-auto flex items-center justify-end gap-1 mt-1 pr-1">
-                      <span className="text-[10px] text-slate-500">8:48 PM</span>
+                      <span className="text-[10px] text-slate-500">
+                        8:48 PM
+                      </span>
                       <Check className="w-3 h-3 text-sky-400" />
                     </div>
                   </div>
-                  <p className="text-[10px] text-slate-500">Opens WhatsApp with this message pre-filled — it doesn't send automatically.</p>
+                  <p className="text-[10px] text-slate-500">
+                    Opens WhatsApp with this message pre-filled — it doesn't
+                    send automatically.
+                  </p>
                 </div>
 
                 {/* Email Box */}
                 <div className="p-4 rounded-lg bg-slate-950 border border-slate-800 space-y-2">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
-                      <Mail className="w-3.5 h-3.5 text-cyan-400" /> Email Subject & Follow-up
+                      <Mail className="w-3.5 h-3.5 text-cyan-400" /> Email
+                      Subject & Follow-up
                     </span>
                     <button
-                      onClick={() => handleCopy(`Subject: ${parsedData.emailSubject}\n\n${parsedData.emailBody}`, 'Email draft')}
+                      onClick={() =>
+                        handleCopy(
+                          `Subject: ${parsedData.emailSubject}\n\n${parsedData.emailBody}`,
+                          "Email draft",
+                        )
+                      }
                       className="text-xs text-slate-300 hover:text-white bg-slate-800 border border-slate-700 px-2.5 py-1 rounded flex items-center gap-1 transition-colors font-medium"
                     >
-                      {copiedType === 'Email draft' ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-                      <span>{copiedType === 'Email draft' ? 'Copied' : 'Copy Email'}</span>
+                      {copiedType === "Email draft" ? (
+                        <Check className="w-3 h-3" />
+                      ) : (
+                        <Copy className="w-3 h-3" />
+                      )}
+                      <span>
+                        {copiedType === "Email draft" ? "Copied" : "Copy Email"}
+                      </span>
                     </button>
                   </div>
                   <div className="text-xs text-slate-300">
                     <span className="text-slate-500">Subject: </span>
-                    <strong className="text-white font-medium">{parsedData.emailSubject}</strong>
+                    <strong className="text-white font-medium">
+                      {parsedData.emailSubject}
+                    </strong>
                   </div>
                 </div>
               </div>
