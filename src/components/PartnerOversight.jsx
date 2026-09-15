@@ -140,7 +140,7 @@ export default function PartnerOversight({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60">
-              {teamMembers.map(member => {
+              {teamMembers.filter(member => member.includeInCapacityMatrix !== false && member.level !== 'Manager').map(member => {
                 const memberTasks = tasks.filter(t => t.assignedTo === member.id && t.status !== 'completed');
                 return (
                   <tr key={member.id} className="hover:bg-slate-950/50 transition-colors">

@@ -6,7 +6,9 @@ import {
   getAllocationDriftSeverity,
   getClientIdleSavingsLakhs,
   getIdleCashSeverity,
-  getVisibleTasksForRole
+  getOpenTasks,
+  getVisibleTasksForRole,
+  renderAuditDetail
 } from './frontendState.js';
 
 const rahul = { id: 'rm-1', level: 'RM' };
@@ -30,6 +32,8 @@ const clients = [
 ];
 
 test('derives idle cash from numeric fields and display strings', () => {
+  assert.equal(getClientIdleSavingsLakhs({ idleCash: { amountNumeric: 2200000 }, idleSavingsNumeric: 65 }), 22);
+  assert.equal(getClientIdleSavingsLakhs({ idleCash: null, idleSavingsNumeric: 65 }), 0);
   assert.equal(getClientIdleSavingsLakhs(clients[0]), 45);
   assert.equal(getClientIdleSavingsLakhs(clients[1]), 35);
 });
@@ -66,13 +70,24 @@ test('shows ops all ops-addressed tasks even when category is not operations', (
   assert.deepEqual(getVisibleTasksForRole(tasks, clients, ops).map(task => task.id), ['tax', 'rm']);
 });
 
+test('uses one open-task selector for every task count surface', () => {
+  const tasks = [
+    { id: 'pending', status: 'pending_rm' },
+    { id: 'ops', status: 'pending_ops' },
+    { id: 'processing', status: 'in_progress' },
+    { id: 'done', status: 'completed' }
+  ];
+
+  assert.deepEqual(getOpenTasks(tasks).map(task => task.id), ['pending', 'ops', 'processing']);
+});
+
 test('dedupes generated talking points and falls back to client dossier copy', () => {
   assert.deepEqual(dedupeStrings(['Deploy into arbitrage fund via STP.', 'Deploy into arbitrage fund via STP.', 'Review allocation.']), [
     'Deploy into arbitrage fund via STP.',
     'Review allocation.'
   ]);
 
-  const view = buildClientViewModel({
+  const localFallbackView = buildClientViewModel({
     baseClient: {
       name: 'Kabir Malhotra',
       idleSavings: '₹65 Lakhs',
@@ -83,12 +98,84 @@ test('dedupes generated talking points and falls back to client dossier copy', (
       currentAllocation: { equity: 71, debt: 16, alternates: 13 },
       mandateAllocation: { equity: 70, debt: 15, alternates: 15 }
     },
-    portfolio: { idleCash: null, taxHarvestingOpportunity: null },
     normalizedAlerts: []
   });
 
-  assert.equal(view.idleSavings, '₹65 Lakhs');
-  assert.equal(view.taxHarvestingOpportunity, '₹4.5 Lakhs');
-  assert.equal(view.talkingPoints[0], 'Discuss private credit allocation.');
-  assert.equal(view.objectionDefense[0].answer, 'Diversifies concentrated public-market exposure.');
+  assert.equal(localFallbackView.idleSavings, '₹65 Lakhs');
+  assert.equal(localFallbackView.taxHarvestingOpportunity, '₹4.5 Lakhs');
+  assert.equal(localFallbackView.talkingPoints[0], 'Discuss private credit allocation.');
+  assert.equal(localFallbackView.objectionDefense[0].answer, 'Diversifies concentrated public-market exposure.');
+
+  const apiNullView = buildClientViewModel({
+    baseClient: {
+      name: 'Goenka',
+      idleSavings: '₹35 Lakhs',
+      taxHarvestingOpportunity: '₹1.8 Lakhs',
+      currentAllocation: { equity: 42, debt: 48, alternates: 10 },
+      mandateAllocation: { equity: 50, debt: 40, alternates: 10 }
+    },
+    portfolio: { idleCash: null, taxHarvestingOpportunity: null }
+  });
+
+  assert.equal(apiNullView.idleSavings, '-');
+  assert.equal(apiNullView.taxHarvestingOpportunity, '-');
+
+  const bootstrapOpportunityView = buildClientViewModel({
+    baseClient: {
+      name: 'Goenka',
+      idleCash: {
+        title: '₹35L Idle in HDFC Classic Savings',
+        description: 'Review deployment after Re-KYC.',
+        amountNumeric: 3500000
+      },
+      taxHarvestingOpportunity: {
+        title: '₹1.8 Lakhs Tax-Loss Harvest Window',
+        description: 'Review loss-making tranches.'
+      },
+      currentAllocation: { equity: 42, debt: 48, alternates: 10 },
+      mandateAllocation: { equity: 50, debt: 40, alternates: 10 }
+    }
+  });
+
+  assert.equal(bootstrapOpportunityView.idleSavings, '₹35L Idle in HDFC Classic Savings');
+  assert.equal(bootstrapOpportunityView.taxHarvestingOpportunity, '₹1.8 Lakhs Tax-Loss Harvest Window');
+});
+
+test('renders call note synthesis audit copy from event metadata instead of stored prose', () => {
+  const oldDetails = [
+    'Synthesized CRM draft from call note',
+    'Synthesized CRM draft from call note with gemini',
+    'Synthesized CRM draft from call note using Gemini'
+  ];
+
+  assert.deepEqual(
+    oldDetails.map(detail => renderAuditDetail({
+      event: 'callnote.synthesized',
+      detail,
+      metadataJson: { provider: 'gemini' }
+    })),
+    [
+      'Synthesized CRM draft from call note using deterministic backend extraction',
+      'Synthesized CRM draft from call note using deterministic backend extraction',
+      'Synthesized CRM draft from call note using deterministic backend extraction'
+    ]
+  );
+
+  assert.equal(
+    renderAuditDetail({
+      event: 'callnote.synthesized',
+      detail: 'callnote.synthesized',
+      metadataJson: { provider: 'gemini', geminiCalled: true, model: 'gemini-2.5-flash' }
+    }),
+    'Synthesized CRM draft from call note using Gemini'
+  );
+
+  assert.equal(
+    renderAuditDetail({
+      event: 'callnote.synthesized',
+      detail: 'Synthesized CRM draft from call note with gemini',
+      metadataJson: { provider: 'backend_deterministic' }
+    }),
+    'Synthesized CRM draft from call note using deterministic backend extraction'
+  );
 });

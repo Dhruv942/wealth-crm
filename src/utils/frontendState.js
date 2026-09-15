@@ -1,7 +1,8 @@
 export function getClientIdleSavingsLakhs(client) {
-  if (typeof client?.idleSavingsNumeric === 'number') return client.idleSavingsNumeric;
-  if (typeof client?.idleCashAmountNumeric === 'number') return client.idleCashAmountNumeric / 100000;
   if (typeof client?.idleCash?.amountNumeric === 'number') return client.idleCash.amountNumeric / 100000;
+  if (Object.prototype.hasOwnProperty.call(client || {}, 'idleCash')) return 0;
+  if (typeof client?.idleCashAmountNumeric === 'number') return client.idleCashAmountNumeric / 100000;
+  if (typeof client?.idleSavingsNumeric === 'number') return client.idleSavingsNumeric;
   if (typeof client?.amountNumeric === 'number') return client.amountNumeric / 100000;
   const match = (client?.idleSavings || '').match(/([\d.]+)\s*Lakhs?/i);
   return match ? Number.parseFloat(match[1]) : 0;
@@ -51,7 +52,7 @@ export function getAllocationDriftSeverity(client) {
 
 export function getIdleCashSeverity(client) {
   const lakhs = getClientIdleSavingsLakhs(client);
-  const label = client?.idleSavings || client?.idleCash?.title || client?.idleCashLabel || formatLakhsAsIndianCurrency(lakhs);
+  const label = client?.idleCash?.title || (Object.prototype.hasOwnProperty.call(client || {}, 'idleCash') ? '-' : client?.idleSavings || client?.idleCashLabel || formatLakhsAsIndianCurrency(lakhs));
   if (lakhs >= 40) return { level: 'high', label };
   if (lakhs >= 20) return { level: 'medium', label };
   return { level: 'low', label };
@@ -76,6 +77,40 @@ export function getVisibleTasksForRole(tasks, clientProfiles, currentRM) {
   });
 }
 
+export function getOpenTasks(tasks) {
+  return tasks.filter(task => task.status !== 'completed');
+}
+
+function opportunityTitle(value) {
+  if (!value) return null;
+  if (typeof value === 'string') return value;
+  if (typeof value.title === 'string') return value.title;
+  return null;
+}
+
+function opportunityDescription(value) {
+  if (!value) return null;
+  if (typeof value === 'string') return null;
+  if (typeof value.description === 'string') return value.description;
+  return null;
+}
+
+export function renderAuditDetail(log) {
+  if (log?.event !== 'callnote.synthesized') return log?.detail || '';
+
+  const metadata = log.metadataJson || log.metadata || {};
+  const provider = metadata.provider || 'backend_deterministic';
+  const model = typeof metadata.model === 'string' ? metadata.model : '';
+  const verifiedGemini = metadata.geminiCalled === true || model.toLowerCase().startsWith('gemini');
+  if (verifiedGemini) {
+    return 'Synthesized CRM draft from call note using Gemini';
+  }
+  if (provider === 'backend_deterministic_after_gemini_error') {
+    return 'Synthesized CRM draft from call note using deterministic backend extraction after Gemini error';
+  }
+  return 'Synthesized CRM draft from call note using deterministic backend extraction';
+}
+
 export function buildClientViewModel({
   baseClient,
   clientDetail = null,
@@ -83,6 +118,9 @@ export function buildClientViewModel({
   normalizedAlerts = []
 }) {
   if (!baseClient) return null;
+  const hasPortfolioResponse = portfolio !== null && portfolio !== undefined;
+  const idleCashOpportunity = hasPortfolioResponse ? portfolio?.idleCash : baseClient.idleCash;
+  const taxHarvestingOpportunity = hasPortfolioResponse ? portfolio?.taxHarvestingOpportunity : baseClient.taxHarvestingOpportunity;
   const currentAllocation = toUiAllocation(portfolio?.currentAllocation || baseClient.currentAllocation);
   const mandateAllocation = toUiAllocation(portfolio?.targetAllocation || baseClient.mandateAllocation);
   const portfolioHighlights = portfolio?.holdings?.length
@@ -98,8 +136,8 @@ export function buildClientViewModel({
     : baseClient.clientContextNotes || '';
 
   const generatedTalkingPoints = [
-    portfolio?.idleCash?.description,
-    portfolio?.taxHarvestingOpportunity?.description,
+    opportunityDescription(idleCashOpportunity),
+    opportunityDescription(taxHarvestingOpportunity),
     (portfolio?.currentAllocation || baseClient.currentAllocation) && (portfolio?.targetAllocation || baseClient.mandateAllocation)
       ? `Review allocation: equity ${currentAllocation.equity}% vs target ${mandateAllocation.equity}%, debt ${currentAllocation.debt}% vs target ${mandateAllocation.debt}%.`
       : null,
@@ -132,9 +170,9 @@ export function buildClientViewModel({
     clientContextNotes,
     coPilotAlerts: normalizedAlerts.length ? normalizedAlerts : (baseClient.coPilotAlerts || []),
     relationshipMoments: clientDetail?.relationshipMoments || baseClient.relationshipMoments || [],
-    idleSavings: portfolio?.idleCash?.title || baseClient.idleSavings || 'Not available',
-    idleSavingsRate: portfolio?.idleCash?.description || baseClient.idleSavingsRate || 'Awaiting portfolio feed',
-    taxHarvestingOpportunity: portfolio?.taxHarvestingOpportunity?.title || baseClient.taxHarvestingOpportunity || 'Not available',
+    idleSavings: opportunityTitle(idleCashOpportunity) || (hasPortfolioResponse ? '-' : opportunityTitle(baseClient.idleSavings) || 'Not available'),
+    idleSavingsRate: opportunityDescription(idleCashOpportunity) || (hasPortfolioResponse ? 'No API idle-cash opportunity' : baseClient.idleSavingsRate || 'Awaiting portfolio feed'),
+    taxHarvestingOpportunity: opportunityTitle(taxHarvestingOpportunity) || (hasPortfolioResponse ? '-' : 'Not available'),
     talkingPoints,
     objectionDefense: baseClient.objectionDefense?.length ? baseClient.objectionDefense : fallbackObjections
   };

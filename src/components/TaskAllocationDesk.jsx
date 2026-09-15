@@ -5,7 +5,7 @@ import {
   ShieldAlert, Sparkles, Building, ArrowUpRight, Lock, Send
 } from 'lucide-react';
 import { TEAM_MEMBERS as LOCAL_TEAM_MEMBERS, FIRM_METRICS as LOCAL_FIRM_METRICS, CLIENT_PROFILES as LOCAL_CLIENT_PROFILES } from '../mockData/wealthData';
-import { formatIdleCashFromClients, getVisibleTasksForRole } from '../utils/frontendState';
+import { formatIdleCashFromClients, getOpenTasks, getVisibleTasksForRole } from '../utils/frontendState';
 
 const ALERT_SEVERITY_RANK = { critical: 4, warning: 3, opportunity: 2, info: 1 };
 
@@ -40,6 +40,7 @@ export default function TaskAllocationDesk({
   // Strict role-based task visibility:
   // RMs only see tasks assigned to them OR tasks for their clients with Ops
   const visibleTasks = getVisibleTasksForRole(tasks, clientProfiles, currentRM);
+  const openVisibleTasks = getOpenTasks(visibleTasks);
 
   const filteredTasks = visibleTasks.filter(task => {
     if (isManagerOrOps && selectedRM !== 'all' && task.assignedTo !== selectedRM) return false;
@@ -47,6 +48,7 @@ export default function TaskAllocationDesk({
     if (selectedCategory !== 'all' && task.category !== selectedCategory) return false;
     return true;
   });
+  const filteredOpenTasks = getOpenTasks(filteredTasks);
 
   // Next Best Action: rank accessible clients by their most severe open alert,
   // so the RM/manager sees who to call today instead of opening each dossier one by one
@@ -139,7 +141,7 @@ export default function TaskAllocationDesk({
     return 'completed';
   };
 
-  const openOpsTasks = visibleTasks.filter(task => task.status !== 'completed');
+  const openOpsTasks = openVisibleTasks;
   const urgentOpsTasks = openOpsTasks.filter(task => ['Critical', 'Urgent'].includes(task.priority));
 
   return (
@@ -315,7 +317,7 @@ export default function TaskAllocationDesk({
                     selectedRM === 'all' ? 'bg-cyan-600 text-white' : 'text-slate-400 hover:text-white'
                   }`}
                 >
-                  All Team ({tasks.length})
+                  All Team ({openVisibleTasks.length})
                 </button>
                 {teamMembers.map(member => (
                   <button
@@ -327,7 +329,7 @@ export default function TaskAllocationDesk({
                   >
                     <span>{member.name.split(' ')[0]}</span>
                     <span className="text-[10px] opacity-70 bg-slate-800 px-1.5 py-0.2 rounded-full">
-                      {tasks.filter(t => t.assignedTo === member.id).length}
+                      {openVisibleTasks.filter(t => t.assignedTo === member.id).length}
                     </span>
                   </button>
                 ))}
@@ -372,14 +374,14 @@ export default function TaskAllocationDesk({
         </div>
 
         <div className="text-xs text-slate-400">
-          Showing <strong className="text-white">{filteredTasks.length}</strong> tasks in queue
+          Showing <strong className="text-white">{filteredOpenTasks.length}</strong> open tasks in queue
         </div>
       </div>
 
       {/* Kanban Board Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
         {columns.map(col => {
-          const colTasks = filteredTasks.filter(t => t.status === col.id);
+          const colTasks = filteredOpenTasks.filter(t => t.status === col.id);
           return (
             <div key={col.id} className="bg-slate-900/40 border border-slate-800/80 rounded-xl p-3 flex flex-col min-h-[560px]">
               {/* Column Header */}

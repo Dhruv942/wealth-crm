@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   ClipboardList,
   Brain,
@@ -43,7 +43,9 @@ import {
 } from "./services/api";
 import {
   getClientIdleSavingsLakhs,
+  getOpenTasks,
   getVisibleTasksForRole,
+  renderAuditDetail,
 } from "./utils/frontendState";
 
 const toRoleId = (user) => {
@@ -76,7 +78,8 @@ const normalizeAuditLog = (log, { clients = [], teamMembers = [] } = {}) => {
     event: log.event || "Activity",
     client: log.client || client?.name || log.clientId || "Internal Desk",
     advisor: log.advisor || advisor?.name || log.actorUserId || "System",
-    detail: log.detail || "",
+    detail: renderAuditDetail(log),
+    metadataJson: log.metadataJson || log.metadata || {},
     complianceStatus: status.toUpperCase(),
   };
 };
@@ -100,6 +103,7 @@ export default function App() {
   const [playbookLibrary, setPlaybookLibrary] = useState([]);
   const [auditLogs, setAuditLogs] = useState([]);
   const [apiToken, setApiToken] = useState(null);
+  const [apiRefreshToken, setApiRefreshToken] = useState(null);
   const [apiStatus, setApiStatus] = useState("connecting");
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [loginError, setLoginError] = useState(null);
@@ -190,6 +194,7 @@ export default function App() {
       const login = await loginDemoRole(roleId);
       const bootstrap = await fetchBootstrap(login.accessToken);
       setApiToken(login.accessToken);
+      setApiRefreshToken(login.refreshToken);
       applyBootstrap(bootstrap, toRoleId(login.user));
       setApiStatus("connected");
       if (!silent) showToast(`Backend connected as ${login.user.name}`);
@@ -225,8 +230,9 @@ export default function App() {
   const accessibleTasks = isManager
     ? tasks
     : getVisibleTasksForRole(tasks, clientProfiles, currentRM);
+  const openAccessibleTasks = getOpenTasks(accessibleTasks);
 
-  const nearBreachTasks = accessibleTasks.filter(
+  const nearBreachTasks = openAccessibleTasks.filter(
     (t) => t.slaStatus === "near_breach",
   );
   const pendingReKyc = accessibleClients.filter((c) =>
@@ -235,10 +241,11 @@ export default function App() {
   const idleCashTotalLakhs = accessibleClients.reduce((sum, c) => {
     return sum + getClientIdleSavingsLakhs(c);
   }, 0);
-  const nudgeCount =
+  const attentionNudgeCount =
     nearBreachTasks.length +
     pendingReKyc.length +
     (idleCashTotalLakhs > 0 ? 1 : 0);
+  const nudgeCount = openAccessibleTasks.length;
 
   // Global Cmd/Ctrl+K to open the command palette
   useEffect(() => {
@@ -306,6 +313,7 @@ export default function App() {
   const handleLogout = () => {
     setIsAuthenticated(false);
     setApiToken(null);
+    setApiRefreshToken(null);
     setApiStatus("connecting");
     setLoginError(null);
     setTasks([]);
@@ -326,12 +334,34 @@ export default function App() {
     }, 3500);
   };
 
+  const handleSessionExpired = () => {
+    setIsAuthenticated(false);
+    setApiToken(null);
+    setApiRefreshToken(null);
+    setApiStatus("offline");
+    setLoginError("Session expired. Please sign in again.");
+    showToast("Session expired. Please sign in again.");
+  };
+
+  const apiSession = useMemo(
+    () =>
+      apiToken
+        ? {
+            accessToken: apiToken,
+            refreshToken: apiRefreshToken,
+            onTokenRefresh: setApiToken,
+            onSessionExpired: handleSessionExpired,
+          }
+        : null,
+    [apiToken, apiRefreshToken],
+  );
+
   const refreshCurrentRole = async () => {
-    if (!apiToken)
+    if (!apiSession)
       return { success: false, error: new Error("Missing backend session") };
     try {
       setApiStatus("connecting");
-      const bootstrap = await fetchBootstrap(apiToken);
+      const bootstrap = await fetchBootstrap(apiSession);
       applyBootstrap(bootstrap, currentRM.id);
       setApiStatus("connected");
       return { success: true };
@@ -343,12 +373,12 @@ export default function App() {
   const handleRetryConnection = () => loadBackendForRole(currentRM.id);
 
   const handleUpdateTaskStatus = async (taskId, nextStatus) => {
-    if (!apiToken) {
+    if (!apiSession) {
       showToast("Backend session is required before updating tasks.");
       return;
     }
     try {
-      const updated = await updateTaskStatus(apiToken, taskId, nextStatus);
+      const updated = await updateTaskStatus(apiSession, taskId, nextStatus);
       setTasks((prev) =>
         prev.map((task) =>
           task.id === taskId ? normalizeTask(updated) : task,
@@ -362,12 +392,12 @@ export default function App() {
   };
 
   const handleReassignTask = async (taskId, newAssigneeId, newAssigneeName) => {
-    if (!apiToken) {
+    if (!apiSession) {
       showToast("Backend session is required before reassigning tasks.");
       return;
     }
     try {
-      const updated = await assignTask(apiToken, taskId, newAssigneeId);
+      const updated = await assignTask(apiSession, taskId, newAssigneeId);
       setTasks((prev) =>
         prev.map((task) =>
           task.id === taskId ? normalizeTask(updated) : task,
@@ -381,9 +411,7 @@ export default function App() {
   };
 
   // Task count badge for current user
-  const userTaskCount = (isManager ? tasks : accessibleTasks).filter(
-    (t) => t.status !== "completed",
-  ).length;
+  const userTaskCount = openAccessibleTasks.length;
 
   if (!isAuthenticated) {
     return (
@@ -505,7 +533,7 @@ export default function App() {
               {bellOpen && (
                 <div className="absolute right-0 mt-2 w-80 bg-slate-900 border border-slate-800 rounded-xl shadow-2xl p-3 space-y-2.5 z-50">
                   <div className="text-xs font-bold text-white uppercase tracking-wider">
-                    Today's Nudges
+                    Open Task Notifications
                   </div>
                   {nearBreachTasks.length > 0 && (
                     <div className="p-2.5 rounded-lg bg-rose-950/30 border border-rose-800 text-xs flex items-start gap-2">
@@ -534,7 +562,7 @@ export default function App() {
                       </span>
                     </div>
                   )}
-                  {nudgeCount === 0 && (
+                  {attentionNudgeCount === 0 && (
                     <div className="text-xs text-slate-500 py-2 text-center">
                       Nothing needs attention right now.
                     </div>
@@ -655,7 +683,7 @@ export default function App() {
             currentRM={currentRM}
             clientProfiles={clientProfiles}
             firmMetrics={firmMetrics}
-            apiToken={apiToken}
+            apiToken={apiSession}
             selectedClientId={selectedClientId}
             onSelectClient={setSelectedClientId}
             onShowToast={showToast}
@@ -674,7 +702,7 @@ export default function App() {
             clientProfiles={clientProfiles}
             demoCallScenarios={demoCallScenarios}
             playbookLibrary={playbookLibrary}
-            apiToken={apiToken}
+            apiToken={apiSession}
             onBackendRefresh={refreshCurrentRole}
             onNavigateToAllocation={() => setActiveTab("allocation")}
             selectedClientId={selectedClientId}
